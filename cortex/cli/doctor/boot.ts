@@ -10,7 +10,7 @@
 // - All database logic now lives in ./database.ts (separate CLI).
 // - This file only orchestrates boot order and summary output.
 
-import { getSettings } from "../../get_settings";
+import { getSettings } from "../../settings/get_settings";
 
 type BootCheck = {
     name: string;
