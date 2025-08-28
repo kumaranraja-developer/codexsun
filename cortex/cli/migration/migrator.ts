@@ -46,13 +46,13 @@ export function splitSQL(script: string): string[] {
 
 export async function ensureMigrationsTable(engine: Engine) {
     await engine.execute(`
-    CREATE TABLE IF NOT EXISTS _migrations (
-      app TEXT NOT NULL,
-      name TEXT NOT NULL,
-      applied_at TIMESTAMP NOT NULL,
-      PRIMARY KEY (app, name)
-    )
-  `);
+        CREATE TABLE IF NOT EXISTS _migrations (
+                                                   app TEXT NOT NULL,
+                                                   name TEXT NOT NULL,
+                                                   applied_at TIMESTAMP NOT NULL,
+                                                   PRIMARY KEY (app, name)
+            )
+    `);
 }
 
 export async function appliedForApp(engine: Engine, app: string): Promise<string[]> {
