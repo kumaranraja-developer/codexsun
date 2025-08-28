@@ -1,4 +1,4 @@
-// root/index.ts
+// cortex/cli/index.ts
 //
 // Central CLI router. Dynamically loads subcommand handlers so startup stays fast.
 // Add new commands by extending the `loaders` map below.

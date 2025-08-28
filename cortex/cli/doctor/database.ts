@@ -1,14 +1,9 @@
 // cortex/commands/doctor/database.ts
 //
-// One-shot Database Doctor
-// - No watchers, no globals that keep the event loop alive
-// - Returns a normalized result shape for boot.ts to print
-//
-// Exported API:
-//   - doctorDatabase(settings)
-//   - default export doctorDatabase
-
-import { connectionManager } from "../../database/connection_manager";
+// One-shot Database Doctor (ESM-safe):
+// - Imports connection_manager regardless of export shape (named/default)
+// - Builds engine, runs fast health, closes pool
+// - Returns { ok, engine, code?, detail? } without exiting the process
 
 type DoctorResult = {
     ok: boolean;
@@ -19,14 +14,12 @@ type DoctorResult = {
 
 type MaybeEngine = {
     close?: () => Promise<void>;
-    // optional health methods across engines
     healthCheck?: () => Promise<{ ok: boolean; code?: string; detail?: string }>;
     _test_connection?: () => Promise<boolean>;
     fetchall?: <T = any>(sql: string, params?: unknown) => Promise<T[]>;
 };
 
 function pickError(err: any): { code?: string; detail?: string } {
-    // Normalize common MariaDB/mysql2/Postgres error shapes
     const code = err?.code ?? err?.errno ?? err?.name ?? err?.sqlState;
     const detail =
         err?.detail ??
@@ -36,8 +29,16 @@ function pickError(err: any): { code?: string; detail?: string } {
     return { code, detail };
 }
 
+async function getConnectionManager(): Promise<any> {
+    const mod: any = await import("../../database/connection_manager");
+    // Accept any of these shapes:
+    //   export const connectionManager = { … }
+    //   export default { … }
+    //   module.exports = { … } (transpiled)
+    return mod.connectionManager ?? mod.default ?? mod;
+}
+
 async function tryHealth(engine: MaybeEngine): Promise<DoctorResult> {
-    // Prefer explicit healthCheck if present
     if (typeof engine.healthCheck === "function") {
         try {
             const r = await engine.healthCheck();
@@ -47,7 +48,6 @@ async function tryHealth(engine: MaybeEngine): Promise<DoctorResult> {
         }
     }
 
-    // Fallback to _test_connection if available
     if (typeof engine._test_connection === "function") {
         try {
             const ok = await engine._test_connection();
@@ -57,7 +57,6 @@ async function tryHealth(engine: MaybeEngine): Promise<DoctorResult> {
         }
     }
 
-    // Last resort: SELECT 1
     if (typeof engine.fetchall === "function") {
         try {
             await engine.fetchall("SELECT 1");
@@ -70,8 +69,7 @@ async function tryHealth(engine: MaybeEngine): Promise<DoctorResult> {
     return { ok: false, detail: "No supported health method on engine" };
 }
 
-/** Optional: guard against drivers that hang on connect */
-function withTimeout<T>(p: Promise<T>, ms: number, label = "database check"): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number, label = "database health check"): Promise<T> {
     let t: NodeJS.Timeout;
     const timeout = new Promise<never>((_, rej) => {
         t = setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms);
@@ -84,20 +82,19 @@ export async function doctorDatabase(settings: any): Promise<DoctorResult> {
     const engineName = settings?.DB_ENGINE ?? "unknown";
 
     try {
-        // Build engine *without* starting any watchers
-        engine = await (connectionManager as any).getEngineFromSettings(settings);
+        const cm = await getConnectionManager();
+        if (typeof cm.getEngineFromSettings !== "function") {
+            return { ok: false, engine: engineName, detail: "connection_manager.getEngineFromSettings not found" };
+        }
 
-        // Run the health check with a short timeout (e.g., 6s)
+        engine = await cm.getEngineFromSettings(settings);
+
         const res = await withTimeout(tryHealth(engine), 6000, "database health check");
         return { engine: engineName, ...res };
     } catch (e: any) {
         return { ok: false, engine: engineName, ...pickError(e) };
     } finally {
-        try {
-            await engine?.close?.();
-        } catch {
-            /* ignore */
-        }
+        try { await engine?.close?.(); } catch {}
     }
 }
 

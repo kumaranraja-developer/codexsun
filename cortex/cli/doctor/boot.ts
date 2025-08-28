@@ -1,98 +1,65 @@
 // cortex/commands/doctor/boot.ts
-//
-// Boot Doctor (one-shot):
-// - Loads settings without starting watchers
-// - Runs ordered boot checks (env → settings → database via ./database.ts)
-// - Prints a compact report
-// - Cleans up and exits deterministically
-//
-// Notes:
-// - All database logic now lives in ./database.ts (separate CLI).
-// - This file only orchestrates boot order and summary output.
+import { getSettings as _getSettings } from "../../settings/get_settings";
 
-import { getSettings } from "../../settings/get_settings";
+type CheckResult = { ok: boolean; info?: string; code?: string; detail?: string };
 
-type BootCheck = {
-    name: string;
-    run: () => Promise<{ ok: boolean; info?: string; code?: string; detail?: string }>;
-};
-
-async function tryStopSettingsWatcherIfAny() {
+async function getSettingsNoWatch(): Promise<any> {
     try {
-        const mod = await import("../../get_settings");
-        const stop = (mod as any).stopSettingsWatchIfAny;
-        if (typeof stop === "function") await stop();
-    } catch {
-        /* optional; ignore if not present */
-    }
+        const maybe = await (_getSettings as any)({ watch: false });
+        if (maybe) return maybe;
+    } catch { /* ignore and fall through */ }
+    return _getSettings();
 }
 
-/** Delegate database health to ./database.ts */
-async function runDatabasePhase(settings: any): Promise<{ ok: boolean; info?: string; code?: string; detail?: string }> {
+async function stopSettingsWatcherIfAny(): Promise<void> {
     try {
-        // Expect one of: doctorDatabase / checkDatabase / run / default
-        const mod = await import("./database");
-        const fn =
-            (mod as any).doctorDatabase ||
-            (mod as any).checkDatabase ||
-            (mod as any).run ||
-            (mod as any).default;
+        const mod: any = await import("../../settings/get_settings");
+        if (typeof mod.stopSettingsWatchIfAny === "function") await mod.stopSettingsWatchIfAny();
+    } catch { /* optional */ }
+}
 
+async function runDatabasePhase(settings: any): Promise<CheckResult> {
+    try {
+        const mod: any = await import("./database");
+        const fn = mod.doctorDatabase || mod.checkDatabase || mod.run || mod.default;
         if (typeof fn !== "function") {
-            return { ok: false, detail: "No callable exported function in doctor/database.ts" };
+            return { ok: false, detail: "doctor/database.ts does not export a callable function" };
         }
-
-        const res = await fn(settings);
-        // Normalize to a standard shape
-        if (typeof res === "boolean") {
-            return { ok: res, info: `engine=${settings?.DB_ENGINE ?? "unknown"}` };
-        }
-        const ok = !!res?.ok;
-        const code = res?.code;
-        const detail = res?.detail;
-        const engine = res?.engine ?? settings?.DB_ENGINE ?? "unknown";
-        return { ok, info: `engine=${engine}`, code, detail };
-    } catch (err: any) {
-        return { ok: false, detail: err?.message || String(err) };
+        const r = await fn(settings);
+        const ok = !!r?.ok;
+        const engine = r?.engine ?? settings?.DB_ENGINE ?? "unknown";
+        return { ok, info: `engine=${engine}`, code: r?.code, detail: r?.detail };
+    } catch (e: any) {
+        return { ok: false, detail: e?.message || String(e) };
     }
 }
 
-export async function doctorBoot() {
+export async function runDoctorBoot(): Promise<void> {
     let exitCode = 1;
-
     console.log("— Boot Doctor —");
 
-    // 1) Load settings without watchers (doctor is one-shot)
+    // 1) Settings (no watchers)
     let settings: any;
     try {
-        // If your getSettings accepts {watch:false}, use it; otherwise call normally.
-        settings =
-            (await (getSettings as any)({ watch: false })) ??
-            (await getSettings());
+        settings = await getSettingsNoWatch();
+        const env = settings?.APP_ENV ?? "unknown";
+        const logLevel = settings?.LOG_LEVEL ?? "info";
+        console.log(`✅ Settings loaded (APP_ENV=${env}, LOG_LEVEL=${logLevel})`);
     } catch (err: any) {
         console.error("❌ Failed to load settings:", err?.message || err);
-        await tryStopSettingsWatcherIfAny();
+        await stopSettingsWatcherIfAny();
         process.exit(1);
         return;
     }
 
-    const env = settings?.APP_ENV ?? "unknown";
-    const logLevel = settings?.LOG_LEVEL ?? "info";
-    console.log(`✅ Settings loaded (APP_ENV=${env}, LOG_LEVEL=${logLevel})`);
-
-    // 2) Define boot order checks
-    const checks: BootCheck[] = [
+    // 2) Checks in order
+    const checks: Array<{ name: string; run: () => Promise<CheckResult> }> = [
         {
             name: "Environment",
             run: async () => {
-                // Quick sanity checks without keeping the loop alive
-                const nodeMajor = parseInt(process.versions.node.split(".")[0] || "0", 10);
+                const nodeMajor = Number((process.versions.node.split(".")[0] || "0"));
                 const ok = Number.isFinite(nodeMajor) && nodeMajor >= 18;
-                return {
-                    ok,
-                    info: `node=${process.version}`,
-                    detail: ok ? undefined : "Node.js >= 18 is recommended",
-                };
+                return { ok, info: `node=${process.version}`, detail: ok ? undefined : "Node.js >= 18 is recommended" };
             },
         },
         {
@@ -101,7 +68,6 @@ export async function doctorBoot() {
         },
     ];
 
-    // 3) Execute checks in order and report
     let allOk = true;
     for (const check of checks) {
         try {
@@ -120,27 +86,11 @@ export async function doctorBoot() {
         }
     }
 
-    // 4) Clean up & exit deterministically
-    await tryStopSettingsWatcherIfAny();
-
+    await stopSettingsWatcherIfAny();
     exitCode = allOk ? 0 : 1;
-
-    // If you want to diagnose lingering handles during development:
-    if (process.env.DEBUG_NODE_HANDLES === "1") {
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const why = require("why-is-node-running");
-            setTimeout(() => why(), 2000);
-        } catch {
-            // not installed; ignore
-        }
-    } else {
-        process.exit(exitCode);
-    }
+    process.exit(exitCode);
 }
 
-// Allow direct execution via tsx if needed
-if (require.main === module) {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    doctorBoot();
-}
+// Provide multiple export shapes for CLI compatibility
+export { runDoctorBoot as doctorBoot };
+export default runDoctorBoot;
