@@ -1,0 +1,20 @@
+{
+  "name": "@codexsun/app-cxsun",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup server.ts --format esm --dts --out-dir dist/server --clean",
+    "dev": "tsx server.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "codexsun",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @codexsun/app-cxsun dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "echo \"(add eslint later)\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
