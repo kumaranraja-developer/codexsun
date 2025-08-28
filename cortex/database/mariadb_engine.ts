@@ -2,50 +2,14 @@
 
 import type { DbConfig } from "./connection";
 import { EngineBase } from "./Engine";
+import mariadb, { Pool, PoolConnection } from "mariadb";
 
-// We prefer mysql2/promise; if not available, try mysql2 and wrap.
-type MySqlPool = any;
-type MySqlConn = any;
-
-function requireMysqlPromise() {
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        return require("mysql2/promise");
-    } catch {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const mysql2 = require("mysql2");
-        // very light wrapper to emulate the promise API we need
-        return {
-            createPool: (opts: any) => {
-                const pool = mysql2.createPool(opts);
-                return {
-                    execute: (sql: string, params?: any[]) =>
-                        new Promise((resolve, reject) =>
-                            pool.execute(sql, params ?? [], (err: any, rows: any, fields: any) =>
-                                err ? reject(err) : resolve([rows, fields])
-                            )
-                        ),
-                    query: (sql: string, params?: any[]) =>
-                        new Promise((resolve, reject) =>
-                            pool.query(sql, params ?? [], (err: any, rows: any, fields: any) =>
-                                err ? reject(err) : resolve([rows, fields])
-                            )
-                        ),
-                    getConnection: async () =>
-                        new Promise((resolve, reject) =>
-                            pool.getConnection((err: any, conn: any) => (err ? reject(err) : resolve(conn)))
-                        ),
-                    end: async () =>
-                        new Promise((resolve, reject) => pool.end((err: any) => (err ? reject(err) : resolve(null)))),
-                };
-            },
-        };
-    }
-}
+type MariadbPool = Pool;
+type MariadbConn = PoolConnection;
 
 export class MariaDbEngine extends EngineBase {
-    private pool: MySqlPool | null = null;
-    private txConn: MySqlConn | null = null;
+    private pool: MariadbPool | null = null;
+    private txConn: MariadbConn | null = null;
 
     constructor(cfg: DbConfig) {
         super(cfg);
@@ -55,29 +19,40 @@ export class MariaDbEngine extends EngineBase {
     }
 
     // ───────────────────────────────────────────────────────────────────────────
-    // Protected impls (async via promise API)
+    // Protected impls (async via mariadb promise API)
     // ───────────────────────────────────────────────────────────────────────────
 
     protected async _connect(): Promise<void> {
         if (this.pool) return;
 
-        const mysql = requireMysqlPromise();
         const { host, port, user, pass, name } = this.config;
 
-        this.pool = mysql.createPool({
+        this.pool = mariadb.createPool({
             host,
             port,
             user,
             password: pass,
             database: name,
             // sensible pool defaults
-            waitForConnections: true,
             connectionLimit: 10,
-            queueLimit: 0,
-            // useful options
+            acquireTimeout: 5000,
+            idleTimeout: 30000,
+            // QoL options
+            // mariadb driver supports named placeholders like :id when enabled
             namedPlaceholders: true,
-            dateStrings: false,
+            // allow big numbers to be returned as strings when necessary
+            bigIntAsNumber: false,
+            // date handling (default returns JS Date objects)
+            // dateStrings: false, // not a mariadb option; kept here to show intent
         });
+
+        // Eager test of connectivity (fail fast)
+        const conn = await this.pool.getConnection();
+        try {
+            await conn.ping();
+        } finally {
+            conn.release();
+        }
     }
 
     protected async _close(): Promise<void> {
@@ -88,7 +63,7 @@ export class MariaDbEngine extends EngineBase {
                 await this.txConn.rollback().catch(() => {});
             } catch {}
             try {
-                this.txConn.release?.();
+                this.txConn.release();
             } catch {}
             this.txConn = null;
         }
@@ -106,43 +81,79 @@ export class MariaDbEngine extends EngineBase {
 
     protected async _execute(sql: string, params?: unknown): Promise<number | null> {
         await this._ensurePool();
-        const conn = this.txConn ?? this.pool!;
-        const [result] = await conn.execute(sql, normalizeParams(params));
-        // INSERT/UPDATE/DELETE → mysql2 returns a ResultSetHeader
-        // Try to extract affectedRows; if absent, return null.
-        const affected =
-            result && typeof result === "object" && "affectedRows" in result ? (result.affectedRows as number) : null;
-        return affected ?? null;
+        const conn = this.txConn ?? (await this.pool!.getConnection());
+        const isBorrowed = !this.txConn;
+
+        try {
+            const norm = normalizeParams(params);
+            // mariadb returns either rows[] or an OkPacket-like object
+            const res: any = await conn.query(sql, norm ?? []);
+            // For DML, result has affectedRows (and insertId, warningStatus, etc)
+            const affected =
+                res && typeof res === "object" && "affectedRows" in res ? (res.affectedRows as number) : null;
+            return affected ?? null;
+        } finally {
+            if (isBorrowed) conn.release();
+        }
     }
 
     protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
         await this._ensurePool();
-        const conn = this.txConn ?? this.pool!;
-        const [rows] = await conn.execute(sql, normalizeParams(params));
-        if (Array.isArray(rows)) {
-            return (rows[0] as T) ?? null;
+        const conn = this.txConn ?? (await this.pool!.getConnection());
+        const isBorrowed = !this.txConn;
+
+        try {
+            const rows = (await conn.query(sql, normalizeParams(params) ?? [])) as any[];
+            if (Array.isArray(rows)) {
+                return (rows[0] as T) ?? null;
+            }
+            // If a single row-like object is returned (unlikely), coerce
+            return (rows as unknown as T) ?? null;
+        } finally {
+            if (isBorrowed) conn.release();
         }
-        return (rows as T) ?? null;
     }
 
     protected async _fetchall<T = any>(sql: string, params?: unknown): Promise<T[]> {
         await this._ensurePool();
-        const conn = this.txConn ?? this.pool!;
-        const [rows] = await conn.execute(sql, normalizeParams(params));
-        return (Array.isArray(rows) ? rows : [rows]) as T[];
+        const conn = this.txConn ?? (await this.pool!.getConnection());
+        const isBorrowed = !this.txConn;
+
+        try {
+            const rows = (await conn.query(sql, normalizeParams(params) ?? [])) as any[];
+            return (Array.isArray(rows) ? rows : [rows]) as T[];
+        } finally {
+            if (isBorrowed) conn.release();
+        }
     }
 
     protected async _executemany(sql: string, paramSets: unknown[]): Promise<number | null> {
         await this._ensurePool();
-        const conn = this.txConn ?? this.pool!;
-        let total = 0;
-        for (const ps of paramSets ?? []) {
-            const [result] = await conn.execute(sql, normalizeParams(ps));
-            const affected =
-                result && typeof result === "object" && "affectedRows" in result ? (result.affectedRows as number) : 0;
-            total += affected || 0;
+        const conn = this.txConn ?? (await this.pool!.getConnection());
+        const isBorrowed = !this.txConn;
+
+        try {
+            // Prefer driver-side batching if available and params are arrays of arrays/objects
+            const sets = (paramSets ?? []) as any[];
+            if (typeof conn.batch === "function" && sets.length > 0) {
+                const res: any = await conn.batch(sql, sets);
+                // conn.batch() returns an array of OkPackets or rows; sum affectedRows if present
+                if (Array.isArray(res)) {
+                    const total = res.reduce((acc, r) => acc + (typeof r === "object" && r?.affectedRows || 0), 0);
+                    return total;
+                }
+            }
+
+            // Fallback: loop
+            let total = 0;
+            for (const ps of sets) {
+                const r: any = await conn.query(sql, normalizeParams(ps) ?? []);
+                total += (r && typeof r === "object" && "affectedRows" in r ? (r.affectedRows as number) : 0) || 0;
+            }
+            return total;
+        } finally {
+            if (isBorrowed) conn.release();
         }
-        return total;
     }
 
     protected async _begin(): Promise<void> {
@@ -150,8 +161,9 @@ export class MariaDbEngine extends EngineBase {
         if (this.txConn) {
             throw new Error("Transaction already started");
         }
-        this.txConn = await this.pool!.getConnection();
-        await this.txConn.beginTransaction();
+        const conn = await this.pool!.getConnection();
+        await conn.beginTransaction();
+        this.txConn = conn;
     }
 
     protected async _commit(): Promise<void> {
@@ -160,7 +172,7 @@ export class MariaDbEngine extends EngineBase {
             await this.txConn.commit();
         } finally {
             try {
-                this.txConn.release?.();
+                this.txConn.release();
             } catch {}
             this.txConn = null;
         }
@@ -172,7 +184,7 @@ export class MariaDbEngine extends EngineBase {
             await this.txConn.rollback();
         } finally {
             try {
-                this.txConn.release?.();
+                this.txConn.release();
             } catch {}
             this.txConn = null;
         }
@@ -181,9 +193,16 @@ export class MariaDbEngine extends EngineBase {
     protected async _test_connection(): Promise<boolean> {
         try {
             await this._ensurePool();
-            const [rows] = await (this.txConn ?? this.pool!).query("SELECT 1 AS ok");
-            // If query returned without throwing, consider it healthy.
-            return true;
+            const conn = this.txConn ?? (await this.pool!.getConnection());
+            const isBorrowed = !this.txConn;
+            try {
+                // ping is fast; query is a second check
+                await conn.ping();
+                await conn.query("SELECT 1 AS ok");
+                return true;
+            } finally {
+                if (isBorrowed) conn.release();
+            }
         } catch {
             return false;
         }
@@ -198,12 +217,12 @@ export class MariaDbEngine extends EngineBase {
     }
 }
 
-function normalizeParams(params?: unknown): any[] | undefined {
+function normalizeParams(params?: unknown): any[] | Record<string, any> | undefined {
     if (params == null) return undefined;
     if (Array.isArray(params)) return params as any[];
     if (typeof params === "object") {
-        // allow named placeholders {id: 1, name: 'x'}
-        return params as any;
+        // allow named placeholders {id: 1, name: 'x'} with namedPlaceholders: true
+        return params as Record<string, any>;
     }
     // single scalar → wrap
     return [params as any];

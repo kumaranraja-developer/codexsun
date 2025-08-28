@@ -17,7 +17,8 @@
   "dependencies": {
     "better-sqlite3": "^12.2.0",
     "dotenv": "^17.2.1",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "mariadb": "^3.4.5"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
