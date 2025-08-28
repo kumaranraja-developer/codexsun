@@ -6,10 +6,11 @@ import { EngineBase } from "./Engine";
 type BetterSqliteDB = any;  // better-sqlite3 Database
 type Sqlite3DB = any;       // sqlite3 Database
 
-function tryRequire(moduleName: string) {
+async function tryImport(moduleName: string) {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        return require(moduleName);
+        const mod = await import(moduleName);
+        // handle CJS default
+        return (mod as any).default ?? mod;
     } catch {
         return null;
     }

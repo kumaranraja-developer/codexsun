@@ -1,257 +1,246 @@
-// root/cortex/database/connection_manager.ts
+// cortex/database/connection_manager.ts
+//
+// Minimal, robust connection manager.
+// - Singleton engine (hot-swaps when settings change)
+// - Ensures DB exists (MariaDB/Postgres)
+// - Explicit timeouts + pool sizing (env-driven)
+// - Supports MariaDB/MySQL, Postgres, SQLite
+// - ESM-safe
 
-import type { Engine, DbConfig } from "./connection";
-import {
-    getDefaultEngine,
-    reloadDefaultEngine,
-    hotSwapDefault,
-    getNamedEngine,
-    hotSwapNamed,
-    dropNamed,
-} from "./connection";
+import { getSettings } from "../settings/get_settings";
+import type { Engine } from "./connection";
+import { MariaDbEngine } from "./mariadb_engine";
+import { PostgresEngine } from "./postgres_engine";
+import { SqliteEngine } from "./sqlite_engine";
 
-// Small utility: detect promise-likes
-function isPromise<T = any>(v: any): v is Promise<T> {
-    return !!v && typeof v.then === "function";
+/* ────────────────────────────────────────────────────────────
+ * Types & helpers
+ * ──────────────────────────────────────────────────────────── */
+
+type DbSettings = {
+    DB_ENGINE?: string;
+    DB_HOST?: string;
+    DB_PORT?: string | number;
+    DB_USER?: string;
+    DB_PASS?: string;
+    DB_NAME?: string;
+    DB_SSL?: string | boolean;
+
+    // optional tuning
+    DB_SOCKET?: string;
+    DB_POOL_MIN?: string | number;
+    DB_POOL_MAX?: string | number;
+    DB_CONNECT_TIMEOUT_MS?: string | number;
+    DB_ACQUIRE_TIMEOUT_MS?: string | number;
+    DB_IDLE_TIMEOUT_MS?: string | number;
+};
+
+function toInt(v: unknown, def: number): number {
+    const n = typeof v === "string" ? parseInt(v, 10) : typeof v === "number" ? v : NaN;
+    return Number.isFinite(n) ? Number(n) : def;
+}
+function asBool(v: unknown): boolean {
+    return v === true || v === "true" || v === "1";
+}
+function keyFrom(s: DbSettings): string {
+    return [
+        (s.DB_ENGINE || "").toLowerCase(),
+        s.DB_HOST || "",
+        String(s.DB_PORT ?? ""),
+        s.DB_USER || "",
+        s.DB_NAME || s.DB_SOCKET || "",
+        String(s.DB_SSL ?? ""),
+        String(s.DB_POOL_MIN ?? ""),
+        String(s.DB_POOL_MAX ?? ""),
+    ].join("|");
 }
 
-// Convert any (sync|async) call into a promise (without double-await issues)
-function toPromise<T>(fn: () => T | Promise<T>): Promise<T> {
-    try {
-        const r = fn();
-        return isPromise<T>(r) ? r : Promise.resolve(r);
-    } catch (e) {
-        return Promise.reject(e);
-    }
-}
+/* ────────────────────────────────────────────────────────────
+ * Global engine singleton
+ * ──────────────────────────────────────────────────────────── */
 
-// Best-effort close (sync or async)
-async function bestEffortClose(engine: Engine | null | undefined) {
-    if (!engine || typeof engine.close !== "function") return;
-    try {
-        const r = engine.close();
-        if (isPromise(r)) await r;
-    } catch {
-        // swallow
-    }
-}
+let engineSingleton: Engine | null = null;
+let engineKey = "";
 
-// Engine has a high-level transaction handler?
-function hasHighLevelTx(engine: Engine): engine is Engine & {
-    transaction: <T>(fn: (e: Engine) => T | Promise<T>) => T | Promise<T>;
-} {
-    return typeof (engine as any).transaction === "function";
-}
+/* ────────────────────────────────────────────────────────────
+ * Admin: ensure database exists
+ * ──────────────────────────────────────────────────────────── */
 
-// Identify available low-level exec method
-function pickExec(engine: Engine): ((sql: string, params?: any) => any) | null {
-    const anyEng = engine as any;
-    if (typeof anyEng.exec === "function") return anyEng.exec.bind(anyEng);
-    if (typeof anyEng.query === "function") return anyEng.query.bind(anyEng);
-    if (typeof anyEng.execute === "function") return anyEng.execute.bind(anyEng);
-    return null;
-}
+async function ensureMariaDbDatabaseExists(s: DbSettings): Promise<void> {
+    if (!s.DB_NAME) return;
 
-// Identify explicit begin/commit/rollback, if present
-function pickTxPrimitives(engine: Engine): {
-    begin: ((name?: string) => any) | null;
-    commit: (() => any) | null;
-    rollback: (() => any) | null;
-} {
-    const anyEng = engine as any;
-    return {
-        begin: typeof anyEng.begin === "function" ? anyEng.begin.bind(anyEng) : null,
-        commit: typeof anyEng.commit === "function" ? anyEng.commit.bind(anyEng) : null,
-        rollback: typeof anyEng.rollback === "function" ? anyEng.rollback.bind(anyEng) : null,
+    // Short, direct admin connection (no pool), tiny timeouts for fast fail
+    const adminCfg: any = {
+        engine: "mariadb",
+        host: s.DB_HOST,
+        port: Number(s.DB_PORT ?? 3306),
+        user: s.DB_USER,
+        database: undefined,
+        socketPath: s.DB_SOCKET || undefined,
+        connectTimeout: toInt(s.DB_CONNECT_TIMEOUT_MS, 3000),
+        acquireTimeout: toInt(s.DB_ACQUIRE_TIMEOUT_MS, 3000),
     };
-}
+    if (s.DB_PASS != null) adminCfg.password = s.DB_PASS;
 
-export class ConnectionManager {
-    private readonly name?: string;
-    private _engine: Engine | null = null;
-
-    constructor(name?: string) {
-        this.name = name?.trim() || undefined;
-    }
-
-    /** Resolve and cache the underlying engine (default or named). */
-    private resolve(): Engine {
-        if (this._engine) return this._engine;
-        this._engine = this.name ? getNamedEngine(this.name) : getDefaultEngine();
-        return this._engine;
-    }
-
-    /** Access the current engine instance (lazy). */
-    getEngine(): Engine {
-        return this.resolve();
-    }
-
-    /** Optional convenience: execute a raw statement (sync or async engines). */
-    async execute(sql: string, params?: any): Promise<any> {
-        const eng = this.resolve();
-        const exec = pickExec(eng);
-        if (!exec) {
-            throw new Error("Engine does not expose exec/query/execute");
-        }
-        const r = exec(sql, params);
-        return isPromise(r) ? await r : r;
-    }
-
-    /** Close the underlying engine/pool if supported (works for sync or async engines). */
-    async close(): Promise<void> {
-        await bestEffortClose(this._engine);
-        this._engine = null;
-    }
-
-    /** Reload from process.env: default uses reloadDefaultEngine; named drops & re-resolves. */
-    async reload(): Promise<void> {
-        if (this.name) {
-            // drop only this named instance and reacquire
-            await bestEffortClose(this._engine);
-            this._engine = null;
-            dropNamed(this.name);
-            // re-resolve on next use
-            return;
-        }
-        // default
-        await bestEffortClose(this._engine);
-        this._engine = await reloadDefaultEngine();
-    }
-
-    /** Programmatic hot-swap. Updates env and rebuilds the bound engine. */
-    async hotSwap(partial: Partial<DbConfig>): Promise<void> {
-        if (this.name) {
-            await hotSwapNamed(this.name, partial);
-            // refresh local handle
-            this._engine = null;
-            return;
-        }
-        await hotSwapDefault(partial);
-        this._engine = null;
-    }
-
-    /**
-     * Synchronous transaction context.
-     * - If engine exposes a sync-capable transaction(fn), delegates.
-     * - Else emulates with BEGIN/COMMIT/ROLLBACK using a sync exec path.
-     * - If the engine only supports async IO, throws an error advising to use transactionAsync.
-     */
-    transactionSync<T>(fn: (engine: Engine) => T): T {
-        const eng = this.resolve();
-
-        // Delegate to engine.transaction if it behaves synchronously
-        if (hasHighLevelTx(eng)) {
-            const result = (eng as any).transaction(fn);
-            if (isPromise(result)) {
-                throw new Error(
-                    "Engine transaction is async; use transactionAsync instead for this engine."
-                );
-            }
-            return result;
-        }
-
-        // Fallback to manual BEGIN/COMMIT/ROLLBACK using a sync exec
-        const exec = pickExec(eng);
-        if (!exec) throw new Error("Engine does not support exec/query/execute");
-
-        // Probe whether exec is synchronous
-        const maybeBegin = exec("BEGIN");
-        if (isPromise(maybeBegin)) {
-            throw new Error(
-                "Engine exec/query is async; transactionSync is not supported. Use transactionAsync."
-            );
-        }
-
-        try {
-            const out = fn(eng);
-            const maybeCommit = exec("COMMIT");
-            if (isPromise(maybeCommit)) {
-                throw new Error(
-                    "Engine exec/query changed behavior during tx; expected sync commit."
-                );
-            }
-            return out;
-        } catch (err) {
-            try {
-                const maybeRollback = exec("ROLLBACK");
-                if (isPromise(maybeRollback)) {
-                    // ignore inconsistent async rollback in sync path
-                }
-            } catch {
-                /* swallow rollback errors */
-            }
-            throw err;
-        }
-    }
-
-    /**
-     * Asynchronous transaction context.
-     * - If engine exposes transaction(fn), delegates and awaits it.
-     * - Else emulates with BEGIN/COMMIT/ROLLBACK using async exec path.
-     * - For strictly sync engines, throws NotImplementedError.
-     */
-    async transactionAsync<T>(fn: (engine: Engine) => Promise<T>): Promise<T> {
-        const eng = this.resolve();
-
-        // Delegate to engine.transaction if present (assume async-capable)
-        if (hasHighLevelTx(eng)) {
-            const r = (eng as any).transaction(fn);
-            return await toPromise(() => r);
-        }
-
-        // Fallback to manual transaction using async exec/query
-        const exec = pickExec(eng);
-        if (!exec) {
-            throw new Error("Engine does not support exec/query/execute");
-        }
-
-        // BEGIN (must be async-capable)
-        const rBegin = exec("BEGIN");
-        if (!isPromise(rBegin)) {
-            // If it's sync-only, we can't reliably provide async semantics
-            throw Object.assign(
-                new Error(
-                    "NotImplementedError: Engine appears to be synchronous-only; use transactionSync instead."
-                ),
-                { name: "NotImplementedError" }
-            );
-        }
-        await rBegin;
-
-        try {
-            const out = await fn(eng);
-            await exec("COMMIT");
-            return out;
-        } catch (err) {
-            try {
-                await exec("ROLLBACK");
-            } catch {
-                /* swallow rollback errors */
-            }
-            throw err;
-        }
+    const admin = new MariaDbEngine(adminCfg);
+    await (admin as any).connect?.();
+    try {
+        await admin.execute(`CREATE DATABASE IF NOT EXISTS \`${s.DB_NAME}\``);
+    } finally {
+        await (admin as any).close?.();
     }
 }
 
-/** Ensure the default engine matches current settings; return it. */
-export async function ensureDefaultEngineFromSettings(): Promise<Engine> {
-    const eng = await getEngineFromSettings();
-    setDefaultEngine(eng);
-    return eng;
+async function ensurePostgresDatabaseExists(s: DbSettings): Promise<void> {
+    if (!s.DB_NAME) return;
+
+    // Connect to built-in "postgres" DB (short timeouts), then CREATE DATABASE if missing
+    const adminCfg: any = {
+        engine: "postgres",
+        host: s.DB_HOST,
+        port: Number(s.DB_PORT ?? 5432),
+        user: s.DB_USER,
+        password: s.DB_PASS,
+        database: "postgres",
+        ssl: asBool(s.DB_SSL),
+        connectTimeout: toInt(s.DB_CONNECT_TIMEOUT_MS, 3000),
+    };
+
+    const admin = new PostgresEngine(adminCfg);
+    await (admin as any).connect?.();
+    try {
+        const { rows } = await admin.query(
+            `SELECT 1 FROM pg_database WHERE datname = $1`,
+            [s.DB_NAME]
+        );
+        const exists = Array.isArray(rows) && rows.length > 0;
+        if (!exists) {
+            await admin.execute(`CREATE DATABASE "${s.DB_NAME}"`);
+        }
+    } finally {
+        await (admin as any).close?.();
+    }
 }
 
-/** Already-present helper so migrations can call a callback with a ready engine. */
+async function ensureTargetDbExists(s: DbSettings): Promise<void> {
+    const kind = String(s.DB_ENGINE || "sqlite").toLowerCase();
+    if (!s.DB_NAME && kind !== "sqlite") return;
+
+    if (kind === "mariadb" || kind === "mysql") {
+        await ensureMariaDbDatabaseExists(s);
+        return;
+    }
+    if (kind === "postgres" || kind === "postgresql" || kind === "pg") {
+        await ensurePostgresDatabaseExists(s);
+        return;
+    }
+    // sqlite: file DB auto-creates on connect
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Builders with sane defaults + pool tuning
+ * ──────────────────────────────────────────────────────────── */
+
+function buildEngineFrom(s: DbSettings): Engine {
+    const kind = String(s.DB_ENGINE || "sqlite").toLowerCase();
+
+    const poolMin = toInt(s.DB_POOL_MIN, 0);
+    const poolMax = toInt(s.DB_POOL_MAX, 10);
+    const connectTimeout = toInt(s.DB_CONNECT_TIMEOUT_MS, 3000);
+    const acquireTimeout = toInt(s.DB_ACQUIRE_TIMEOUT_MS, 5000);
+    const idleTimeout = toInt(s.DB_IDLE_TIMEOUT_MS, 10000);
+
+    if (kind === "mariadb" || kind === "mysql") {
+        const cfg: any = {
+            engine: "mariadb",
+            host: s.DB_HOST,
+            port: Number(s.DB_PORT ?? 3306),
+            user: s.DB_USER,
+            database: s.DB_NAME,        // default schema
+            socketPath: s.DB_SOCKET || undefined,
+            // tuning
+            connectionLimit: poolMax,
+            minConnections: poolMin,
+            idleTimeout,                 // ms
+            acquireTimeout,              // ms
+            connectTimeout,              // ms
+        };
+        if (s.DB_PASS != null) {
+            cfg.password = s.DB_PASS;
+            cfg.pass = s.DB_PASS;
+        }
+        return new MariaDbEngine(cfg);
+    }
+
+    if (kind === "postgres" || kind === "postgresql" || kind === "pg") {
+        const cfg: any = {
+            engine: "postgres",
+            host: s.DB_HOST,
+            port: Number(s.DB_PORT ?? 5432),
+            user: s.DB_USER,
+            password: s.DB_PASS,
+            database: s.DB_NAME,
+            ssl: asBool(s.DB_SSL),
+            // tuning (supported by most pg pools; harmless if ignored)
+            max: poolMax,
+            min: poolMin,
+            idleTimeoutMillis: idleTimeout,
+            statement_timeout: acquireTimeout,
+            connectionTimeoutMillis: connectTimeout,
+        };
+        return new PostgresEngine(cfg);
+    }
+
+    // default: sqlite
+    const sqliteCfg: any = {
+        engine: "sqlite",
+        filename: s.DB_NAME || "./database/dev.sqlite",
+    };
+    return new SqliteEngine(sqliteCfg);
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Core lifecycle
+ * ──────────────────────────────────────────────────────────── */
+
+async function getOrCreateEngine(opts?: { fresh?: boolean }): Promise<Engine> {
+    const s = (await getSettings()) as DbSettings;
+    const nextKey = keyFrom(s);
+
+    if (opts?.fresh || !engineSingleton || engineKey !== nextKey) {
+        await ensureTargetDbExists(s);
+
+        if (engineSingleton && typeof (engineSingleton as any).close === "function") {
+            try { await (engineSingleton as any).close(); } catch {}
+        }
+        engineSingleton = buildEngineFrom(s);
+        engineKey = nextKey;
+    }
+
+    return engineSingleton!;
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Public API
+ * ──────────────────────────────────────────────────────────── */
+
 export async function withConnection<T>(
     fn: (engine: Engine) => Promise<T> | T,
-    opts?: { reload?: boolean }
+    opts?: { fresh?: boolean }
 ): Promise<T> {
-    if (opts?.reload) await ensureDefaultEngineFromSettings();
-    const engine = getDefaultEngine() ?? (await ensureDefaultEngineFromSettings());
-    if (typeof engine.connect === "function") await engine.connect();
-    return await fn(engine);
+    const engine = await getOrCreateEngine(opts);
+    if (typeof (engine as any).connect === "function") {
+        try {
+            await (engine as any).connect();
+        } catch (err) {
+            // surface a clean hint if pool/host is unreachable
+            const s = (await getSettings()) as DbSettings;
+            const host = s.DB_SOCKET ? `socket:${s.DB_SOCKET}` : `${s.DB_HOST}:${s.DB_PORT ?? ""}`;
+            console.error(`\n✖ Failed to connect to ${s.DB_ENGINE} at ${host}.`);
+            console.error(`  • Check server is running, host/port (or DB_SOCKET), user/password, and firewall.`);
+            console.error(`  • Current timeouts: connect=${toInt(s.DB_CONNECT_TIMEOUT_MS, 3000)}ms, acquire=${toInt(s.DB_ACQUIRE_TIMEOUT_MS, 5000)}ms`);
+            throw err;
+        }
+    }
+    return fn(engine) as any;
 }
-
-// Example usage:
-// const connection_manager = new ConnectionManager();
-// const dev_connection_manager = new ConnectionManager("DEV");
-// const analytics_connection_manager = new ConnectionManager("ANALYTICS");

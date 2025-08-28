@@ -1,4 +1,4 @@
-import { withConnection, ensureDefaultEngineFromSettings } from "../../database/connection_manager";
+import { withConnection } from "../../database/connection_manager";
 import migrate from "./runner";
 import { dropAllTables, discoverAllApps, printDbInfo } from "./migrator";
 import type { Engine } from "../../database/connection";
@@ -48,8 +48,6 @@ async function freshApp(appName: string, flags: Flags) {
 const run = async (...argv: string[]) => {
     const flags = parseFlags(argv);
     if (flags.help) return printHelp();
-
-    await ensureDefaultEngineFromSettings();
 
     const apps = flags.all ? discoverAllApps() : [flags.app || "cxsun"];
     if (!apps.length) {

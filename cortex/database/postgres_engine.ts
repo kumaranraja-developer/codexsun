@@ -7,10 +7,10 @@ import { EngineBase } from "./Engine";
 type PgPool = any;
 type PgClient = any;
 
-function requirePg() {
-    // Lazy require to avoid forcing dependency where Postgres isn't used
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require("pg");
+async function loadPg() {
+    // Works for both ESM/CJS pg builds
+    const mod = await import("pg");
+    return (mod as any).Pool ? mod : (mod as any).default || mod;
 }
 
 type NormalizedQuery = { text: string; values?: any[] };
@@ -58,26 +58,24 @@ export class PostgresEngine extends EngineBase {
     // Protected impls
     // ───────────────────────────────────────────────────────────────────────────
 
+
+
+
     protected async _connect(): Promise<void> {
         if (this.pool) return;
 
-        const { Pool } = requirePg();
-        const { host, port, user, pass, name } = this.config;
-
+        const pg = await loadPg();
+        const { Pool } = pg;
         this.pool = new Pool({
             host,
             port,
             user,
             password: pass,
             database: name,
-            // sensible defaults
             max: 10,
-            idleTimeoutMillis: 30_000,
-            connectionTimeoutMillis: 10_000,
+            idleTimeoutMillis: 10000,
+            connectionTimeoutMillis: 5000,
         });
-
-        // Eagerly test once so callers of execute() don't get first-use latency
-        await this._test_connection();
     }
 
     protected async _close(): Promise<void> {

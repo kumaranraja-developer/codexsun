@@ -12,7 +12,8 @@
     "clean:all": "pnpm -r run --if-present clean && pnpm -r exec rimraf dist .turbo *.tsbuildinfo && pnpm prune && pnpm store prune",
     "test": "tsx  cortex/scripts/test_runner.ts",
     "test:watch": "tsx watch cortex/scripts/test_runner.ts",
-    "cx": "tsx cortex/main.ts"
+    "cx": "tsx cortex/main.ts",
+    "test:db": "tsx cortex/tests/test_pool.ts"
   },
   "engines": {
     "node": ">=18"

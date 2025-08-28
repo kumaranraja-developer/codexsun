@@ -1,5 +1,7 @@
+
 import * as fs from "node:fs";
-import { withConnection, ensureDefaultEngineFromSettings } from "../../database/connection_manager";
+import { withConnection } from "../../database/connection_manager";
+
 import {
     ensureMigrationsTable,
     appliedForApp,
@@ -58,6 +60,7 @@ async function runAppMigrations(appName: string, flags: Flags) {
 
         console.log(`[${appName}] applying ${pending.length} migration(s)...`);
         for (const file of pending) {
+
             const sql = fs.readFileSync(migrationPath(appName, file), "utf8");
             if (flags.verbose) console.log(` - ${file}`);
             await applySQL(engine, sql, !!flags.dryRun, !!flags.verbose);
@@ -70,8 +73,6 @@ async function runAppMigrations(appName: string, flags: Flags) {
 const run = async (...argv: string[]) => {
     const flags = parseFlags(argv);
     if (flags.help) return printHelp();
-
-    await ensureDefaultEngineFromSettings();
 
     const apps = flags.all ? discoverAllApps() : [flags.app || "cxsun"];
     if (!apps.length) {
