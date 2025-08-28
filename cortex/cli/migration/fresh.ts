@@ -1,11 +1,7 @@
-/**
- * Drop all user tables, then re-run migrations from scratch.
- */
-
-import { withConnection } from "../database/connection_manager";
+import { withConnection, ensureDefaultEngineFromSettings } from "../../database/connection_manager";
 import migrate from "./runner";
 import { dropAllTables, discoverAllApps, printDbInfo } from "./migrator";
-import type { Engine } from "../database/Engine";
+import type { Engine } from "../../database/connection";
 
 type Flags = { app?: string; all?: boolean; verbose?: boolean; dryRun?: boolean; help?: boolean };
 
@@ -26,8 +22,9 @@ function printHelp() {
     console.log(`codexsun fresh
 
 Usage:
-  pnpm cx fresh --app <name>
-  pnpm cx fresh --all
+  cx fresh --app <name>
+  cx fresh --all
+  [--dry-run] [--verbose]
 `);
 }
 
@@ -36,29 +33,30 @@ async function freshApp(appName: string, flags: Flags) {
         if (flags.verbose) await printDbInfo(engine, `[${appName}] `);
 
         if (flags.dryRun) {
-            console.log(`[${appName}] would DROP all tables (dry-run)`);
+            console.log(`[${appName}] DRY RUN: would drop all tables and re-run migrations.`);
             return;
         }
-        await dropAllTables(engine, !!flags.verbose);
-    });
 
-    console.log(`[${appName}] re-running migrations...`);
-    await migrate(["--app", appName, ...(flags.verbose ? ["-v"] : [])]);
-    console.log(`✅ ${appName}: fresh complete`);
+        console.log(`[${appName}] dropping all tables...`);
+        await dropAllTables(engine, !!flags.verbose, !!flags.dryRun);
+
+        console.log(`[${appName}] re-running migrations...`);
+        await migrate("--app", appName, ...(flags.verbose ? ["--verbose"] : []));
+    });
 }
 
-const run: (argv: string[]) => Promise<void> = async (argv) => {
+const run = async (...argv: string[]) => {
     const flags = parseFlags(argv);
     if (flags.help) return printHelp();
 
+    await ensureDefaultEngineFromSettings();
+
     const apps = flags.all ? discoverAllApps() : [flags.app || "cxsun"];
-    if (apps.length === 0) {
+    if (!apps.length) {
         console.log("No apps found for fresh.");
         return;
     }
-    for (const app of apps) {
-        await freshApp(app, flags);
-    }
+    for (const app of apps) await freshApp(app, flags);
 };
 
 export default run;

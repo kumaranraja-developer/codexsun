@@ -1,32 +1,74 @@
 // cortex/cli/index.ts
 //
-// Central CLI router. Dynamically loads subcommand handlers so startup stays fast.
-// Add new commands by extending the `loaders` map below.
+// Central CLI router.
+// - Dynamically loads subcommand handlers so startup stays fast.
+// - Add new commands by extending the `loaders` map below.
+// - Handlers may export one of:
+//     * default: (args: string[]) => Promise<void> | void
+//     * default: (...args: string[]) => Promise<void> | void
+//     * handle:  (args: string[]) => Promise<void> | void
+//     * handleX: (args: string[]) => Promise<void> | void  (where X is the Command name, e.g., handleDoctor)
 
 export type CommandHandler = (args: string[]) => Promise<void> | void;
 
 type LoadedModule =
-    | { default?: CommandHandler; handle?: CommandHandler; handleDoctor?: CommandHandler }
+    | { default?: Function; handle?: Function; [k: `handle${string}`]: Function | undefined }
     | Record<string, unknown>;
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Command Loaders                                                                                */
+/* ---------------------------------------------------------------------------------------------- */
+
 const loaders: Record<string, () => Promise<LoadedModule>> = {
-    // Doctor commands: pnpm cx doctor <boot|database|migrate|apps|providers> [--watch]
+    // Doctor commands: cx doctor <boot|database|migrate|apps|providers> [--watch]
     doctor: () => import("./doctor/index"),
-    // Add more commands here, e.g.:
-    // migrate: () => import("./cortex/cli/migrate/index"),
-    // serve:   () => import("./cortex/cli/serve/index"),
+
+    // Migrations CLI:
+    // These point directly to your existing command modules that export a default run(...argv) function.
+    migrate: () => import("./migration/runner"),
+    rollback: () => import("./migration/rollback"),
+    fresh: () => import("./migration/fresh"),
+
+    // Add more commands here as you grow:
+    // serve:   () => import("./serve/index"),
+    // seed:    () => import("../database/seed"),
 };
 
-function pickHandler(mod: LoadedModule, cmd: string): CommandHandler {
-    // Prefer explicit named export for the command…
-    const possible =
-        (mod as any)[`handle${cmd[0].toUpperCase()}${cmd.slice(1)}`] ||
-        (mod as any).handle ||
-        (mod as any).default;
+/* ---------------------------------------------------------------------------------------------- */
+/* Handler Resolution                                                                              */
 
-    if (typeof possible === "function") return possible as CommandHandler;
-    throw new Error(`Module for "${cmd}" does not export a handler`);
+/* ---------------------------------------------------------------------------------------------- */
+
+function pickHandler(mod: LoadedModule, cmd: string): Function {
+    // Prefer an explicitly named handler first (e.g., handleDoctor), then generic `handle`, then `default`.
+    const byName = (mod as any)[`handle${cmd[0].toUpperCase()}${cmd.slice(1)}`];
+    const generic = (mod as any).handle;
+    const def = (mod as any).default;
+
+    const fn = byName || generic || def;
+    if (typeof fn === "function") return fn;
+
+    throw new Error(`Module for "${cmd}" does not export a handler function`);
 }
+
+/**
+ * Invoke a handler that may accept (args: string[]) or (...args: string[]).
+ * We check arity to decide how to call it, but still allow flexible signatures.
+ */
+function invokeHandler(fn: Function, args: string[]) {
+    try {
+        // If the function expects 0 or 1 parameter, pass the single array.
+        // If it expects more than 1 parameter, spread the args.
+        return fn.length <= 1 ? fn(args) : fn(...args);
+    } catch (err) {
+        throw err;
+    }
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Usage / Help                                                                                    */
+
+/* ---------------------------------------------------------------------------------------------- */
 
 function usage(available: string[]) {
     const list = available.length ? available.join(", ") : "(none)";
@@ -38,15 +80,24 @@ Available commands:
 Examples:
   cx doctor boot
   cx doctor database --watch
+  cx migrate --all
+  cx rollback --app cxsun --steps 1
+  cx fresh --all
 `;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Entry                                                                                           */
+
+/* ---------------------------------------------------------------------------------------------- */
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
     const [, , rawCmd = "", ...args] = argv;
     const cmd = String(rawCmd || "").trim();
+    const available = Object.keys(loaders);
 
     if (!cmd) {
-        console.error(usage(Object.keys(loaders)));
+        console.error(usage(available));
         process.exitCode = 1;
         return;
     }
@@ -54,7 +105,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     const loader = loaders[cmd];
     if (!loader) {
         console.error(`Unknown command: ${cmd}\n`);
-        console.error(usage(Object.keys(loaders)));
+        console.error(usage(available));
         process.exitCode = 1;
         return;
     }
@@ -64,13 +115,15 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     try {
         mod = await loader();
     } catch (e: any) {
-        throw new Error(`Failed to load command "${cmd}": ${e?.message || e}`);
+        console.error(`Failed to load command "${cmd}": ${e?.message || e}`);
+        process.exitCode = 1;
+        return;
     }
 
     const handler = pickHandler(mod, cmd);
 
-    // Run the command
-    const result = handler(args);
+    // Run the command (supports both (args) and (...args) styles)
+    const result = invokeHandler(handler, args);
     if (result && typeof (result as Promise<void>).then === "function") {
         await result;
     }

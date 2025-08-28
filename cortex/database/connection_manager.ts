@@ -233,6 +233,24 @@ export class ConnectionManager {
     }
 }
 
+/** Ensure the default engine matches current settings; return it. */
+export async function ensureDefaultEngineFromSettings(): Promise<Engine> {
+    const eng = await getEngineFromSettings();
+    setDefaultEngine(eng);
+    return eng;
+}
+
+/** Already-present helper so migrations can call a callback with a ready engine. */
+export async function withConnection<T>(
+    fn: (engine: Engine) => Promise<T> | T,
+    opts?: { reload?: boolean }
+): Promise<T> {
+    if (opts?.reload) await ensureDefaultEngineFromSettings();
+    const engine = getDefaultEngine() ?? (await ensureDefaultEngineFromSettings());
+    if (typeof engine.connect === "function") await engine.connect();
+    return await fn(engine);
+}
+
 // Example usage:
 // const connection_manager = new ConnectionManager();
 // const dev_connection_manager = new ConnectionManager("DEV");
