@@ -1,10 +1,9 @@
 // cortex/commands/doctor/database.ts
 //
-// Database Doctor with dual API:
-// 1) programmatic: runDoctorDatabase(settings) -> Promise<DoctorResult>
-// 2) CLI style (no args): runDoctorDatabase() -> prints + process.exit
-//
-// Keeps compatibility with boot.ts (programmatic) AND your CLI (no-arg).
+// Database Doctor:
+// - Can be used programmatically (doctorDatabase(settings))
+// - Or as a CLI (runDoctorDatabase with no args)
+// - Prints success or error messages clearly when run via CLI
 
 type DoctorResult = {
     ok: boolean;
@@ -66,9 +65,6 @@ async function buildEngineDirectly(settings: any): Promise<MaybeEngine> {
         case "mariadb": {
             const mod: any = await import("../../database/mariadb_engine");
             const MariaDbEngine = mod?.MariaDbEngine ?? mod?.default ?? mod;
-            if (typeof MariaDbEngine !== "function") {
-                throw new Error("MariaDbEngine not found in ../../database/mariadb_engine");
-            }
             const cfg = {
                 engine: "mariadb",
                 host: settings.DB_HOST,
@@ -78,33 +74,6 @@ async function buildEngineDirectly(settings: any): Promise<MaybeEngine> {
                 name: settings.DB_NAME,
             };
             return new MariaDbEngine(cfg);
-        }
-        case "sqlite": {
-            const mod: any = await import("../../database/sqlite_engine").catch(() => null);
-            const SqliteEngine = mod?.SqliteEngine ?? mod?.default;
-            if (typeof SqliteEngine !== "function") {
-                throw new Error("SqliteEngine not available");
-            }
-            const cfg = { engine: "sqlite", name: settings.DB_NAME };
-            return new SqliteEngine(cfg);
-        }
-        case "postgres":
-        case "postgresql": {
-            const mod: any = await import("../../database/postgres_engine").catch(() => null);
-            const PostgresEngine = mod?.PostgresEngine ?? mod?.default;
-            if (typeof PostgresEngine !== "function") {
-                throw new Error("PostgresEngine not available");
-            }
-            const cfg = {
-                engine: "postgres",
-                host: settings.DB_HOST,
-                port: Number(settings.DB_PORT ?? 5432),
-                user: settings.DB_USER,
-                pass: settings.DB_PASS,
-                name: settings.DB_NAME,
-                ssl: settings.DB_SSL === "true" ? {} : undefined,
-            };
-            return new PostgresEngine(cfg);
         }
         default:
             throw new Error(`Unsupported DB_ENGINE: ${settings?.DB_ENGINE}`);
@@ -146,15 +115,15 @@ async function tryHealth(engine: MaybeEngine): Promise<DoctorResult> {
     return { ok: false, detail: "No supported health method on engine" };
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number, label = "database health check"): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
     let t: NodeJS.Timeout;
     const timeout = new Promise<never>((_, rej) => {
-        t = setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms);
+        t = setTimeout(() => rej(new Error(`Database health check timed out after ${ms}ms`)), ms);
     });
     return Promise.race([p, timeout]).finally(() => clearTimeout(t!));
 }
 
-/** Programmatic API used by boot.ts */
+// Programmatic API
 export async function doctorDatabase(settings: any): Promise<DoctorResult> {
     let engine: MaybeEngine | null = null;
     const engineName = settings?.DB_ENGINE ?? "unknown";
@@ -166,45 +135,28 @@ export async function doctorDatabase(settings: any): Promise<DoctorResult> {
     } catch (e: any) {
         return { ok: false, engine: engineName, ...pickError(e) };
     } finally {
-        try { await engine?.close?.(); } catch { /* ignore */ }
+        try { await engine?.close?.(); } catch {}
     }
 }
 
-/**
- * CLI handler: if called without args, it will:
- *  - load settings (no watchers)
- *  - run doctorDatabase
- *  - print result and exit with proper code
- * If a settings object is provided, it behaves like the programmatic API.
- */
-export async function runDoctorDatabase(settings?: any): Promise<DoctorResult | void> {
-    if (settings) {
-        // programmatic usage
-        return doctorDatabase(settings);
-    }
-
-    // CLI usage (no args)
+// CLI entrypoint
+export async function runDoctorDatabase(): Promise<void> {
     const mod: any = await import("../../settings/get_settings");
-    let s: any;
-    try {
-        s = (await (mod.getSettings as any)({ watch: false })) ?? (await mod.getSettings());
-    } catch {
-        s = await mod.getSettings();
-    }
+    const getSettings = mod.getSettings ?? mod.default;
+    const settings = (await (getSettings as any)({ watch: false })) ?? (await getSettings());
 
-    const res = await doctorDatabase(s);
+    const res = await doctorDatabase(settings);
 
     if (res.ok) {
-        console.log(`✅ Database (engine=${res.engine ?? s?.DB_ENGINE ?? "unknown"})`);
+        console.log(`✅ Database (engine=${res.engine ?? settings?.DB_ENGINE ?? "unknown"}) is healthy`);
         process.exit(0);
     } else {
-        console.error(`❌ Database failed (engine=${res.engine ?? s?.DB_ENGINE ?? "unknown"})`);
+        console.error(`❌ Database failed (engine=${res.engine ?? settings?.DB_ENGINE ?? "unknown"})`);
         if (res.code) console.error(`   code=${res.code}`);
         if (res.detail) console.error(`   detail=${res.detail}`);
         process.exit(1);
     }
 }
 
-// Exports for CLI compatibility
+// Default export for CLI router
 export default runDoctorDatabase;
-export { doctorDatabase as databaseDoctor };
