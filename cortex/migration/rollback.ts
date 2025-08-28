@@ -1,7 +1,6 @@
 /**
- * codexsun rollback runner
- *
- * Assumes each migration has a sibling *_down.sql file for rollback.
+ * Roll back the last N applied migrations for one app (or all apps).
+ * Requires a sibling *_down.sql file per migration.
  */
 
 import fs from "node:fs";
@@ -11,7 +10,9 @@ import {
     lastApplied,
     discoverAllApps,
     migrationPath,
+    printDbInfo,
 } from "./migrator";
+import type { Engine } from "../database/Engine";
 
 type Flags = { app?: string; all?: boolean; steps?: number; dryRun?: boolean; verbose?: boolean; help?: boolean };
 
@@ -39,8 +40,10 @@ Usage:
 }
 
 async function rollbackApp(appName: string, flags: Flags) {
-    await withConnection(async (db) => {
-        const filenames = await lastApplied(db, appName, flags.steps || 1);
+    await withConnection(async (engine: Engine) => {
+        if (flags.verbose) await printDbInfo(engine, `[${appName}] `);
+
+        const filenames = await lastApplied(engine, appName, flags.steps || 1);
         if (filenames.length === 0) {
             console.log(`[${appName}] no migrations to rollback`);
             return;
@@ -59,12 +62,13 @@ async function rollbackApp(appName: string, flags: Flags) {
             const sql = fs.readFileSync(downPath, "utf8");
 
             if (!flags.dryRun) {
-                await applySQL(db, sql);
+                await applySQL(engine, sql, !!flags.verbose);
                 // noinspection SqlNoDataSourceInspection
-                await db.run?.(
-                    `DELETE FROM migrations WHERE app = ? AND filename = ?`,
-                    [appName, fname]
-                );
+                if (engine.execute) {
+                    await engine.execute(`DELETE FROM migrations WHERE app = ? AND filename = ?`, [appName, fname]);
+                } else {
+                    await engine.query(`DELETE FROM migrations WHERE app = ? AND filename = ?`, [appName, fname]);
+                }
             }
         }
     });

@@ -1,82 +1,38 @@
 #!/usr/bin/env node
+// root/main.ts
+// Minimal launcher that defers to ./index.ts
 
-// Keep your framework exports:
-export { createServer } from "./server/create";
-export { discoverApps } from "./apps/discover";
-export type { AppMountInfo } from "./server/mount";
-
-/**
- * Minimal CLI router for codexsun.
- * Usage:
- *   pnpm cx migrate --app cxsun
- *   pnpm cx migrate --all
- *   pnpm cx test
- *   pnpm cx <command> [args...]
- */
-
-type CommandHandler = (args: string[]) => Promise<void> | void;
-
-function resolveHandler(mod: unknown): CommandHandler {
-    const m = mod as any;
-    if (typeof m === "function") return m as CommandHandler;
-    if (m && typeof m.default === "function") return m.default as CommandHandler;
-    if (m && typeof m.run === "function") return m.run as CommandHandler;
-    throw new TypeError(
-        "Loaded command module does not export a handler (default/run/function)."
-    );
-}
-
-const registry: Record<string, () => Promise<unknown>> = {
-    migrate:   () => import("./migration/runner"),
-    rollback:  () => import("./migration/rollback"),
-    fresh:     () => import("./migration/fresh"),
-
-    test:      () => import("./scripts/test_runner"),
-
-    // add more commands here if needed
-
-};
-
-function printHelp() {
-    const cmd_s = Object.keys(registry).sort().join(", ");
-    console.log(`codexsun CLI
-
-Usage:
-  pnpm cx <command> [args...]
-
-Commands:
-  ${cmd_s}
-
-Examples:
-  pnpm cx migrate --app cxsun
-  pnpm cx migrate --all
-  pnpm cx test
-`);
-}
-
-async function main() {
-    const [, , cmd, ...args] = process.argv;
-    if (!cmd || cmd === "-h" || cmd === "--help" || cmd === "help") {
-        printHelp();
-        return;
-    }
-
-    const loader = registry[cmd];
-    if (!loader) {
-        console.error(`Unknown command: ${cmd}\n`);
-        printHelp();
-        process.exit(1);
-    }
-
+(async () => {
+    // Try ESM default export first: export async function runCli(argv?: string[])
     try {
-        const mod = await loader();
-        const handler = resolveHandler(mod);
-        await handler(args);
-    } catch (err) {
-        console.error(`Command "${cmd}" failed:`, err);
-        process.exit(1);
-    }
-}
+        const mod = await import("./cli/index");
+        if (typeof (mod as any).runCli === "function") {
+            await (mod as any).runCli(process.argv);
+            return;
+        }
+        if (typeof (mod as any).default === "function") {
+            await (mod as any).default(process.argv);
+            return;
+        }
+        throw new Error("index.ts does not export runCli or a default handler");
+    } catch (err: any) {
+        // If your build emits CommonJS for index.js, fall back to require()
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const mod = require("./cli/index");
+            const handler =
+                typeof mod.runCli === "function" ? mod.runCli :
+                    typeof mod.default === "function" ? mod.default :
+                        null;
 
-// Explicitly ignore the returned Promise to satisfy the linter:
-void main();
+            if (!handler) throw new Error("index.js does not export runCli or default");
+            await handler(process.argv);
+        } catch (e) {
+            const msg = (err?.stack || err?.message || String(err)) +
+                "\n" +
+                ((e as any)?.stack || (e as any)?.message || "");
+            console.error(msg);
+            process.exit(1);
+        }
+    }
+})();

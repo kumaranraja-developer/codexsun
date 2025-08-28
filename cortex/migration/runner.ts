@@ -1,9 +1,8 @@
 /**
- * codexsun migration runner (apply new migrations)
+ * Apply new migrations for one app (or all apps).
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import { withConnection } from "../database/connection_manager";
 import {
     ensureMigrationsTable,
@@ -13,7 +12,9 @@ import {
     listMigrationFiles,
     migrationPath,
     discoverAllApps,
+    printDbInfo,
 } from "./migrator";
+import type { Engine } from "../database/Engine";
 
 type Flags = { app?: string; all?: boolean; dryRun?: boolean; verbose?: boolean; help?: boolean };
 
@@ -48,11 +49,12 @@ async function runAppMigrations(appName: string, flags: Flags) {
     }
     if (flags.verbose) console.log(`[${appName}] found ${files.length} file(s)`);
 
-    await withConnection(async (db) => {
-        await ensureMigrationsTable(db);
+    await withConnection(async (engine: Engine) => {
+        if (flags.verbose) await printDbInfo(engine, `[${appName}] `);
+        await ensureMigrationsTable(engine);
 
         for (const file of files) {
-            const applied = await hasApplied(db, appName, file);
+            const applied = await hasApplied(engine, appName, file);
             if (applied) {
                 if (flags.verbose) console.log(`[${appName}] already applied: ${file}`);
                 continue;
@@ -62,8 +64,8 @@ async function runAppMigrations(appName: string, flags: Flags) {
             console.log(`Applying migration (${appName}): ${file}`);
 
             if (!flags.dryRun) {
-                await applySQL(db, sql);
-                await markApplied(db, appName, file);
+                await applySQL(engine, sql, !!flags.verbose);
+                await markApplied(engine, appName, file);
             }
         }
     });

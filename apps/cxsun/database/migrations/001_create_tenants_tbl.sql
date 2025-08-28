@@ -1,4 +1,4 @@
--- apps/cxsun/database/migration/0001_create_tenants.sql
+-- apps/cxsun/database/migrations/0001_create_tenants.sql
 -- table: tenants
 
 CREATE TABLE IF NOT EXISTS tenants (

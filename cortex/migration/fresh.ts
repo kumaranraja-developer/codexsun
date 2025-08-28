@@ -1,12 +1,11 @@
 /**
- * codexsun fresh runner
- *
- * Drops all tables and re-runs migrations from scratch for an app (or all apps).
+ * Drop all user tables, then re-run migrations from scratch.
  */
 
 import { withConnection } from "../database/connection_manager";
 import migrate from "./runner";
-import { dropAllTables, discoverAllApps } from "./migrator";
+import { dropAllTables, discoverAllApps, printDbInfo } from "./migrator";
+import type { Engine } from "../database/Engine";
 
 type Flags = { app?: string; all?: boolean; verbose?: boolean; dryRun?: boolean; help?: boolean };
 
@@ -33,12 +32,14 @@ Usage:
 }
 
 async function freshApp(appName: string, flags: Flags) {
-    await withConnection(async (db) => {
+    await withConnection(async (engine: Engine) => {
+        if (flags.verbose) await printDbInfo(engine, `[${appName}] `);
+
         if (flags.dryRun) {
             console.log(`[${appName}] would DROP all tables (dry-run)`);
             return;
         }
-        await dropAllTables(db);
+        await dropAllTables(engine, !!flags.verbose);
     });
 
     console.log(`[${appName}] re-running migrations...`);

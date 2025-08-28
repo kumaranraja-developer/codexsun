@@ -1,3 +1,7 @@
+/**
+ * apps/cxsun/app.ts
+ */
+
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
 
 /**
