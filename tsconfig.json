@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "include": ["server.ts", "cortex/**/*.ts", "apps/**/*.ts"]
+}

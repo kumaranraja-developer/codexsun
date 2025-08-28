@@ -2,15 +2,30 @@
   "name": "codexsun",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@9.0.0",
   "type": "module",
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "pnpm --filter @codexsun/app-cxsun dev",
-    "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
-    "lint": "echo \"(add eslint later)\""
+    "dev": "tsx watch server.ts",
+    "build": "tsup server.ts --format esm --dts --out-dir dist --clean",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "clean:all": "pnpm -r run --if-present clean && pnpm -r exec rimraf dist .turbo *.tsbuildinfo && pnpm prune && pnpm store prune",
+    "test": "tsx  cortex/scripts/test_runner.ts",
+    "test:watch": "tsx watch cortex/scripts/test_runner.ts",
+    "cx": "tsx cortex/main.ts"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "dotenv": "^17.2.1",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   }
 }

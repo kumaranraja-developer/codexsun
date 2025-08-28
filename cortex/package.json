@@ -1,0 +1,25 @@
+{
+  "name": "@codexsun/cortex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./main.ts",
+  "exports": {
+    ".": "./main.ts",
+    "./main": "./main.ts",
+    "./database/*": "./database/*",
+    "./settings/*": "./settings/*",
+    "./connection/*": "./connection/*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^17.2.1",
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
