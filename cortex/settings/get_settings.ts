@@ -1,13 +1,9 @@
-export function envTenantToken(tenantId: string): string {
-    return String(tenantId || '')
-        .trim()
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, '_');
-}
+// Simple env helpers (no tenant logic)
 
 export function getEnv(name: string): string | undefined {
     return process.env[name];
 }
+
 export function getEnvBool(name: string, fallback?: boolean): boolean | undefined {
     const raw = getEnv(name);
     if (raw == null) return fallback;
@@ -16,6 +12,7 @@ export function getEnvBool(name: string, fallback?: boolean): boolean | undefine
     if (['0', 'false', 'no', 'off'].includes(v)) return false;
     return fallback;
 }
+
 export function getEnvInt(name: string, fallback?: number): number | undefined {
     const raw = getEnv(name);
     if (!raw) return fallback;
@@ -23,30 +20,29 @@ export function getEnvInt(name: string, fallback?: number): number | undefined {
     return Number.isFinite(n) ? n : fallback;
 }
 
-/** Looks up <TOKEN>_<KEY> first, then global <KEY>. */
-export function getTenantEnv(tenantId: string, key: string): string | undefined {
-    const token = envTenantToken(tenantId);
-    const tenantKey = `${token}_${key}`;
-    return getEnv(tenantKey) ?? getEnv(key);
-}
-export function getTenantEnvBool(tenantId: string, key: string, fallback?: boolean) {
-    const token = envTenantToken(tenantId);
-    const tenantKey = `${token}_${key}`;
-    const t = getEnvBool(tenantKey);
-    return t !== undefined ? t : getEnvBool(key, fallback);
-}
-export function getTenantEnvInt(tenantId: string, key: string, fallback?: number) {
-    const token = envTenantToken(tenantId);
-    const tenantKey = `${token}_${key}`;
-    const t = getEnvInt(tenantKey);
-    return t !== undefined ? t : getEnvInt(key, fallback);
+/** Read PREFIX_DB_KEY (e.g., BLUE_DB_HOST). Case-insensitive prefix. */
+export function getPrefixedEnv(prefix: string, key: string): string | undefined {
+    const P = String(prefix || '').trim().toUpperCase();
+    return getEnv(`${P}_DB_${key}`);
 }
 
-export function getTenantPoolSettings(tenantId: string) {
+/** Read global DB_KEY (e.g., DB_HOST). */
+export function getGlobalEnv(key: string): string | undefined {
+    return getEnv(`DB_${key}`);
+}
+
+export function getPoolSettings(prefix?: string) {
+    const read = prefix ? (k: string) => getPrefixedEnv(prefix, k) : (k: string) => getGlobalEnv(k);
     return {
-        min: getTenantEnvInt(tenantId, 'DB_POOL_MIN'),
-        max: getTenantEnvInt(tenantId, 'DB_POOL_MAX'),
-        idleMillis: getTenantEnvInt(tenantId, 'DB_POOL_IDLE'),
-        acquireTimeoutMillis: getTenantEnvInt(tenantId, 'DB_POOL_ACQUIRE'),
+        min: toInt(read('POOL_MIN')),
+        max: toInt(read('POOL_MAX')),
+        idleMillis: toInt(read('POOL_IDLE')),
+        acquireTimeoutMillis: toInt(read('POOL_ACQUIRE')),
     };
+
+    function toInt(raw?: string): number | undefined {
+        if (!raw) return undefined;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : undefined;
+    }
 }

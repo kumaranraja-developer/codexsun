@@ -1,31 +1,17 @@
-// cortex/tests/cfg_test.ts
+// ESM-safe, no args needed. Validates three profiles: default, BLUE, SANDBOX.
 import { getDbConfig } from '../database/getDbConfig';
 import type { DBConfig } from '../database/types';
 
-/** 🔧 Tenants to validate by default */
-const DEFAULT_TENANTS: string[] = [
-    'tenant_acme_001', // token -> ACME_001
-    'blue-shop',       // token -> BLUE_SHOP
-    'sandbox',         // token -> SANDBOX
-];
+const PROFILES = ['default', 'BLUE', 'SANDBOX'] as const;
 
-/** --- small assert helpers --- */
-function fail(msg: string): never {
-    throw new Error(msg);
-}
-function assert(cond: unknown, msg: string): asserts cond {
-    if (!cond) fail(msg);
-}
+function fail(msg: string): never { throw new Error(msg); }
+function assert(cond: unknown, msg: string): asserts cond { if (!cond) fail(msg); }
 function assertNonEmpty(v: unknown, name: string) {
     assert(typeof v === 'string' && v.trim().length > 0, `Missing ${name}`);
 }
-function isNumber(n: unknown): n is number {
-    return typeof n === 'number' && Number.isFinite(n);
-}
+function isNumber(n: unknown): n is number { return typeof n === 'number' && Number.isFinite(n); }
 
-/** redact only the `password` field if it exists and is a string */
 function redact<T extends object>(cfg: T): T {
-    // copy into a shallow mutable object without requiring index signatures
     const out: any = { ...(cfg as any) };
     if (typeof out.password === 'string') {
         const p = out.password as string;
@@ -34,49 +20,41 @@ function redact<T extends object>(cfg: T): T {
     return out as T;
 }
 
-/** Per-driver validation */
-function validateConfig(cfg: DBConfig) {
+function validate(cfg: DBConfig) {
     assert(cfg, 'Config is undefined');
     assert(cfg.driver === 'mariadb' || cfg.driver === 'postgres' || cfg.driver === 'sqlite', 'Invalid driver');
 
     if (cfg.driver === 'sqlite') {
-        // SQLiteDBConfig
         assertNonEmpty((cfg as any).file, 'DB_FILE (sqlite)');
         return;
     }
-
-    // NetworkDBConfig
-    const n = cfg as Extract<DBConfig, { host: string }>;
-    assertNonEmpty(n.host, 'DB_HOST');
+    const n = cfg as any;
+    assertNonEmpty(n.host, 'DB_HOST/HOST');
     assert(isNumber(n.port) && n.port > 0, 'DB_PORT must be a positive number');
-    assertNonEmpty(n.user, 'DB_USER');
-    assertNonEmpty((n as any).password, 'DB_PASSWORD');
-    assertNonEmpty(n.database, 'DB_NAME');
+    assertNonEmpty(n.user, 'DB_USER/USER');
+    assertNonEmpty(n.password, 'DB_PASSWORD/PASS');
+    assertNonEmpty(n.database, 'DB_NAME/NAME');
 }
 
-/** Run tests for all tenants (defaults inside this file) */
 export async function runAllCfgTests(): Promise<void> {
-    const tenants = DEFAULT_TENANTS;
-
-    console.log('[cfg_test] Running DB config checks for:', tenants.join(', '));
+    console.log('[cfg_test] Validating profiles:', PROFILES.join(', '));
     let failures = 0;
 
-    for (const t of tenants) {
+    for (const p of PROFILES) {
         try {
-            const cfg = getDbConfig(t);
-            console.log(`\n[cfg_test] tenant=${t}`);
+            const cfg = getDbConfig(p);
+            console.log(`\n[cfg_test] profile=${p}`);
             console.dir(redact(cfg), { depth: null });
-            validateConfig(cfg);
-            // basic cfgKey sanity
+            validate(cfg);
             assertNonEmpty((cfg as any).cfgKey, 'cfgKey');
             assert(String((cfg as any).cfgKey).startsWith('cfg:'), 'cfgKey must start with "cfg:"');
-            console.log(`✔ Passed: ${t}`);
+            console.log(`✔ Passed: ${p}`);
         } catch (e: any) {
             failures++;
-            console.error(`✖ Failed: ${t} → ${e?.message || e}`);
+            console.error(`✖ Failed: ${p} → ${e?.message || e}`);
         }
     }
 
-    if (failures > 0) fail(`[cfg_test] ${failures} tenant(s) failed config validation`);
-    console.log('\n[cfg_test] All tenants passed ✅');
+    if (failures) fail(`[cfg_test] ${failures} profile(s) failed`);
+    console.log('\n[cfg_test] All profiles passed ✅');
 }

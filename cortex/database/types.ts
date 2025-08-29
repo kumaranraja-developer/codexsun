@@ -6,13 +6,15 @@ export interface DBPoolConfig {
     idleMillis?: number;
     acquireTimeoutMillis?: number;
 }
+
 export interface BaseDBConfig {
-    tenantId: string;
+    profile: string;        // 'default' | 'BLUE' | 'SANDBOX' | etc.
     driver: DBDriver;
     ssl?: boolean | 'require';
     pool?: DBPoolConfig;
-    cfgKey: string;
+    cfgKey: string;         // stable cache key
 }
+
 export interface NetworkDBConfig extends BaseDBConfig {
     host: string;
     port: number;
@@ -21,11 +23,14 @@ export interface NetworkDBConfig extends BaseDBConfig {
     database: string;
     socketPath?: string;
 }
+
 export interface SQLiteDBConfig extends BaseDBConfig {
-    file: string;
+    file: string;           // path to sqlite file
 }
+
 export type DBConfig = NetworkDBConfig | SQLiteDBConfig;
 
+/** Build a deterministic key from config parts. */
 export function makeConfigKey(parts: Record<string, unknown>): string {
     const entries = Object.entries(parts)
         .filter(([, v]) => v !== undefined && v !== '')
