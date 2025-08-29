@@ -18,9 +18,12 @@
     "better-sqlite3": "^12.2.0",
     "dotenv": "^17.2.1",
     "fastify": "^4.28.1",
-    "mariadb": "^3.4.5"
+    "mariadb": "^3.4.5",
+    "pg": "^8.16.3",
+    "sqlite3": "^5.1.6"
   },
   "devDependencies": {
+    "@types/sqlite3": "^5.1.0",
     "typescript": "^5.9.2"
   }
 }
