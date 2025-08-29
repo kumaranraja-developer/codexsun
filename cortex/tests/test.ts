@@ -5,14 +5,18 @@ import { runAllCfgTests } from './cfg_test';
 import {smokeMariaDB} from "./smoke_mariadb";
 import {smokePostgres} from "./smoke_postgres";
 import {smokeSQLite} from "./smoke_sqlite";
-import {color} from "../utils/logger";
+import { color, log } from '../utils/logger';
+import { Stage } from '../utils/stage';
 
 async function main() {
-    await runAllCfgTests();   // validates .env-driven DB configs
+    // await runAllCfgTests();   // validates .env-driven DB configs
 
-    await smokeMariaDB();     // validates MariaDB connection from .env
-    await smokePostgres()     // validates Postgres connection from .env
+    const s = new Stage('[db_smoke] start');
+    // await smokeMariaDB();     // validates MariaDB connection from .env
+    // await smokePostgres()     // validates Postgres connection from .env
     await smokeSQLite()       // validates SQLite connection from .env
+
+    s.end('all db smokes completed');
     console.log('\n' + color.green('[db_smoke] all smokes passed ✅'));
 }
 

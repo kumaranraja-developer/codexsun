@@ -1,9 +1,11 @@
 import { prepareEngine, execute, fetchAll } from '../database/connection_manager';
-import { color, log } from '../utils/logger';
+import { color, log, step } from '../utils/logger';
+import { Stage } from '../utils/stage';
+import { Progress } from '../utils/logger';
 
 const PROFILE = 'SANDBOX' as const;
-const TOTAL = 1000;      // lighter on SQLite
-const BATCH = 500;       // we’ll insert with literal values for zero-binding issues
+const TOTAL = 1000;
+const BATCH = 500;
 
 function makeTable() {
     return `users_smoke_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
@@ -18,40 +20,63 @@ function genUsers(n: number) {
 }
 
 export async function smokeSQLite(): Promise<void> {
-    log.header('[smoke:sqlite]');
+    const s0 = new Stage('[smoke:sqlite] resolve engine');
     const eng = await prepareEngine(PROFILE);
-    if (eng.driver !== 'sqlite') {
-        throw new Error(`Profile ${PROFILE} is ${eng.driver}, expected sqlite`);
-    }
+    if (eng.driver !== 'sqlite') throw new Error(`Profile ${PROFILE} is ${eng.driver}, expected sqlite`);
+    s0.end(`engine ready driver=${eng.driver} cfgKey=${eng.cfgKey}`);
+
     const tbl = makeTable();
     const create = `CREATE TABLE ${tbl} (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    created_at TEXT DEFAULT (datetime('now'))
-  )`;
+                                            id INTEGER PRIMARY KEY,
+                                            name TEXT NOT NULL,
+                                            email TEXT NOT NULL UNIQUE,
+                                            created_at TEXT DEFAULT (datetime('now'))
+                    )`;
     const countQ = `SELECT COUNT(*) AS c FROM ${tbl}`;
     const drop = `DROP TABLE ${tbl}`;
 
-    try {
-        await execute(PROFILE, create);
+    const s1 = new Stage('[smoke:sqlite] create table');
+    try { await execute(PROFILE, create); s1.end(`table ${color.gray(tbl)} created`); }
+    catch (e) { s1.fail(e, `create ${tbl}`); throw e; }
 
-        // Use literal VALUES to avoid any binding ambiguity in better-sqlite3
+    const s2 = new Stage(`[smoke:sqlite] insert ${TOTAL} rows`);
+    try {
         const rows = genUsers(TOTAL);
+        const prog = new Progress(TOTAL, 'sqlite:insert');
+
         for (let i = 0; i < rows.length; i += BATCH) {
             const chunk = rows.slice(i, i + BATCH);
-            const valuesSql = chunk
-                .map(u => `(${u.id}, '${u.name}', '${u.email}')`)
-                .join(', ');
+            const valuesSql = chunk.map(u => `(${u.id}, '${u.name}', '${u.email}')`).join(', ');
             const insert = `INSERT INTO ${tbl} (id, name, email) VALUES ${valuesSql}`;
             await execute(PROFILE, insert);
+            step('insert', Math.min(i + BATCH, rows.length), rows.length);
+            prog.tick(Math.min(i + BATCH, rows.length));
         }
+        s2.end('inserts ok');
+        prog.done(rows.length);
+    } catch (e) {
+        s2.fail(e, 'insert');
+        await execute(PROFILE, drop).catch(() => {});
+        throw e;
+    }
 
+    const s3 = new Stage('[smoke:sqlite] verify count');
+    try {
         const res = await fetchAll<{ c: number }>(PROFILE, countQ);
         const count = Number(res?.[0]?.c ?? NaN);
         if (count !== TOTAL) throw new Error(`Expected ${TOTAL}, got ${count}`);
-        log.ok(`Inserted & verified ${TOTAL} rows in SQLite (${color.gray(tbl)})`);
-    } finally {
+        s3.end(`verified ${TOTAL}`);
+    } catch (e) {
+        s3.fail(e, 'verify');
         await execute(PROFILE, drop).catch(() => {});
+        throw e;
     }
+
+    const s4 = new Stage('[smoke:sqlite] drop table');
+    await execute(PROFILE, drop).then(
+        () => s4.end(`dropped ${color.gray(tbl)}`),
+        (e) => s4.fail(e, `drop ${tbl}`)
+    );
+
+    log.ok(`SQLite smoke passed for ${color.gray(tbl)}`);
 }
