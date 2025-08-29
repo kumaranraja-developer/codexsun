@@ -2,9 +2,11 @@
 // Minimal test entry: just loads .env and runs the cfg tests.
 import 'dotenv/config';
 import { runAllCfgTests } from './cfg_test';
+import { runEngineSmoke } from './engine_smoke';
 
 async function main() {
-    await runAllCfgTests();
+    await runAllCfgTests();   // validates .env-driven DB configs
+    await runEngineSmoke();   // validates engine wiring per profile
 }
 
 main().catch((e) => {
