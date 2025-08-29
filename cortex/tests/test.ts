@@ -9,11 +9,11 @@ import { color, log } from '../utils/logger';
 import { Stage } from '../utils/stage';
 
 async function main() {
-    // await runAllCfgTests();   // validates .env-driven DB configs
+    await runAllCfgTests();   // validates .env-driven DB configs
 
     const s = new Stage('[db_smoke] start');
-    // await smokeMariaDB();     // validates MariaDB connection from .env
-    // await smokePostgres()     // validates Postgres connection from .env
+    await smokeMariaDB();     // validates MariaDB connection from .env
+    await smokePostgres()     // validates Postgres connection from .env
     await smokeSQLite()       // validates SQLite connection from .env
 
     s.end('all db smokes completed');
