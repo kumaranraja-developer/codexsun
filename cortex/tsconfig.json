@@ -8,7 +8,14 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+
+    "baseUrl": ".",
+    "paths": {
+      "@codexsun/*": ["codexsun/*"],
+      // or, if you prefer to target the cortex folder directly:
+       "@cortex/*": ["cortex/*"]
+    }
   },
-  "include": ["main.ts"]
+  "include": ["**/*.ts", "**/*.tsx"]
 }
