@@ -20,9 +20,7 @@ async function main() {
     // s.end('all db smokes completed');
     // console.log('\n' + color.green('[db_smoke] all smokes passed ✅'));
 
-    console.log("[test] starting migration run...");
     await migration_runner();   // will print raw SQL from migrations
-    console.log('\n' + color.green('[test] migration run finished. ✅'));
 
 
 }
