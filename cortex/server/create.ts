@@ -1,96 +1,39 @@
-// cortex/server/create.ts
-import Fastify from "fastify";
-import { discoverApps } from "../apps/discover";
-import { mountApps } from "./mount";
-import { withConnection } from "../database/connection_manager";
+// cortex/create.ts
+import Fastify, { FastifyInstance } from "fastify";
+import { logger } from "../utils/logger";
 
-/** Builds the Fastify server, wires DB endpoints, and mounts app plugins. */
-export async function createServer() {
+export function createFastify(): FastifyInstance {
     const app = Fastify({
-        logger: { level: process.env.LOG_LEVEL || "info" }
+        logger: false,
+        trustProxy: true,
+        disableRequestLogging: true,
     });
 
-    // Tag responses for tracing
-    app.addHook("onSend", async (req, reply, payload) => {
-        const appName = (req.params as any)?.app ?? "root";
-        reply.header("x-codexsun-entry", "root");
-        reply.header("x-codexsun-app", appName);
-        return payload;
+    // attach our custom logger on the instance
+    app.decorate("ulog", logger);
+
+    // add a request-scoped child logger → req.ulog
+    app.addHook("onRequest", async (req) => {
+        const reqId = (req.id as any) ?? Math.random().toString(36).slice(2);
+        (req as any).ulog = app.ulog.child({ reqId, method: req.method, url: req.url });
+        (req as any)._startAt = process.hrtime.bigint();
     });
 
-    // Root info + health
-    app.get("/", async () => ({
-        entry: "codexsun-root",
-        apps: discoverApps(),
-        time: new Date().toISOString()
-    }));
-    app.get("/healthz", async () => ({ status: "healthy" }));
-    app.get("/readyz", async () => ({ status: "ready" }));
-
-    // DB: ping
-    app.get("/db/ping", async () => {
-        return withConnection(async (db) => {
-            if (db.kind === "sqlite") {
-                const r = await db.query<{ now: string }>("SELECT datetime('now') AS now");
-                return { db: db.kind, now: r.rows[0]?.now };
-            }
-            return { db: db.kind, now: new Date().toISOString() };
-        }, "default");
-    });
-
-    // DB: KV demo
-    app.put<{ Params: { key: string }; Body: { value: string } }>("/db/kv/:key", async (req) => {
-        return withConnection(async (db) => {
-            if (db.kind === "sqlite") {
-                await db.execute?.(
-                    "INSERT INTO kv_store (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-                    [req.params.key, req.body.value]
-                );
-                return { ok: true, db: db.kind };
-            }
-            return { ok: false, db: db.kind, note: "only sqlite implemented now" };
-        }, "default");
-    });
-
-    app.get<{ Params: { key: string } }>("/db/kv/:key", async (req) => {
-        return withConnection(async (db) => {
-            if (db.kind === "sqlite") {
-                const r = await db.query<{ v: string }>(
-                    "SELECT v FROM kv_store WHERE k = ?",
-                    [req.params.key]
-                );
-                return { key: req.params.key, value: r.rows[0]?.v ?? null, db: db.kind };
-            }
-            return { key: req.params.key, value: null, db: db.kind, note: "only sqlite implemented now" };
-        }, "default");
-    });
-
-    // Mount per-app plugins
-    const mounts = await mountApps(app);
-    app.log.info(
-        {
-            mounts: mounts.map((m) => ({
-                app: m.name,
-                mounted: m.mounted,
-                pluginFile: m.pluginFile,
-                error: m.error ?? null
-            }))
-        },
-        "App plugins mount summary"
-    );
-
-    // Fallback 404 with context
-    app.setNotFoundHandler((req, reply) => {
-        const p = req.params as any;
-        reply.code(404).send({
-            error: "not_found",
-            app: p?.app ?? null,
-            path: req.url
+    app.addHook("onResponse", async (req, reply) => {
+        const start = (req as any)._startAt as bigint | undefined;
+        const ms = start ? Number((process.hrtime.bigint() - start) / 1_000_000n) : undefined;
+        const rlog = (req as any).ulog ?? app.ulog;
+        rlog.info(`→ ${reply.statusCode}${ms !== undefined ? ` ${ms}ms` : ""}`, {
+            status: reply.statusCode,
+            ms,
         });
+    });
+
+    app.setErrorHandler((err, req, reply) => {
+        const rlog = (req as any).ulog ?? app.ulog;
+        rlog.error(`Unhandled error: ${err.message}`, { err });
+        reply.status(err.statusCode ?? 500).send({ ok: false, error: "Internal error" });
     });
 
     return app;
 }
-
-// Re-export for convenience if your server.ts imports from ./cortex/main
-export { discoverApps } from "../apps/discover";

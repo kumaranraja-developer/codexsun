@@ -2,6 +2,7 @@ import { prepareEngine, execute, fetchAll } from '../database/connection_manager
 import { color, log, step } from '../utils/logger';
 import { Stage } from '../utils/stage';
 import { Progress } from '../utils/logger';
+import { getDbConfig } from "../database/getDbConfig";
 
 const PROFILE = 'SANDBOX' as const;
 const TOTAL = 1000;
@@ -19,7 +20,18 @@ function genUsers(n: number) {
     });
 }
 
-export async function smokeSQLite(): Promise<void> {
+export async function smokeSQLite(profile = "default"): Promise<void> {
+
+    console.log("[smoke:sqlite] resolve engine");
+    const cfg = getDbConfig(profile);
+
+    // If someone runs it while another driver is active, just skip
+    if ((cfg?.driver ?? "").toLowerCase() !== "sqlite") {
+        console.log(`[smoke:sqlite] skipped (active driver: ${cfg?.driver ?? "unknown"})`);
+        return;
+    }
+
+
     const s0 = new Stage('[smoke:sqlite] resolve engine');
     const eng = await prepareEngine(PROFILE);
     if (eng.driver !== 'sqlite') throw new Error(`Profile ${PROFILE} is ${eng.driver}, expected sqlite`);

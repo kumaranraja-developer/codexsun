@@ -4,6 +4,6 @@ import { defineTable } from "../../../../cortex/migration/Builder";
 export default defineTable("tenants", (table) => {
     table.id();
     table.text("name").unique();
-    table.text("display_name").notnull().default("Unnamed Tenant");
+    table.text("active_id").notnull().default("1");
     table.timestamps();
 });

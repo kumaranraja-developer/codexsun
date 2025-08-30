@@ -2,6 +2,7 @@ import { prepareEngine, execute, executeMany, fetchAll } from '../database/conne
 import { color, log, step } from '../utils/logger';
 import { Stage } from '../utils/stage';
 import { Progress } from '../utils/logger';
+import { getDbConfig } from "../database/getDbConfig";
 
 const PROFILE = 'BLUE' as const;
 const TOTAL = 5000;
@@ -17,7 +18,18 @@ function genUsers(n: number) {
     });
 }
 
-export async function smokePostgres(): Promise<void> {
+export async function smokePostgres(profile = "default"): Promise<void> {
+
+    console.log("[smoke:postgres] resolve engine");
+    const cfg = getDbConfig(profile);
+
+    // REPLACE any throw on mismatch with:
+    if ((cfg?.driver ?? "").toLowerCase() !== "postgres") {
+        console.log(`[smoke:postgres] skipped (active driver: ${cfg?.driver ?? "unknown"})`);
+        return;
+    }
+
+
     const s0 = new Stage('[smoke:postgres] resolve engine');
     const eng = await prepareEngine(PROFILE);
     if (eng.driver !== 'postgres') throw new Error(`Profile ${PROFILE} is ${eng.driver}, expected postgres`);

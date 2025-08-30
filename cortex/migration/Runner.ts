@@ -1,9 +1,9 @@
-import Builder, { type DBDriver } from "./Builder";
+// cortex/migration/Runner.ts
+import Builder from "./Builder";
 import { getDbConfig } from "../database/getDbConfig";
 import { getConnection } from "../database/connection_manager";
 import { discoverMigrationFiles, dynamicImportFile } from "./discover";
 import type { TableBlueprint } from "./Blueprint";
-
 import {
     ensureMigrationsTable,
     readAppliedAll,
@@ -12,6 +12,7 @@ import {
     removeApplied,
     currentBatch,
     type ConnectionLike,
+    type DBDriver,
 } from "./tracking";
 
 type Profile = string;
@@ -21,11 +22,20 @@ export interface RunOutput {
     results: Array<{ name: string; content: string; file: string }>;
 }
 
+/** Exec SQL in a driver-agnostic way (adds exec/prepare for better-sqlite3). */
 async function execSQL(conn: ConnectionLike, sql: string): Promise<void> {
-    if (typeof conn.query === "function") { await conn.query(sql); return; }
-    if (typeof conn.execute === "function") { await conn.execute(sql); return; }
-    if (typeof conn.run === "function") { await conn.run(sql); return; }
-    throw new Error("Runner: connection has no query/execute/run method to execute SQL.");
+    if (typeof conn.query === "function")  { await conn.query(sql);  return; }
+    if (typeof conn.execute === "function"){ await conn.execute(sql);return; }
+    if (typeof conn.run === "function")    { await conn.run(sql);    return; }
+
+    if (typeof conn.exec === "function")   { conn.exec(sql);         return; }
+    if (typeof conn.prepare === "function") {
+        const stmt: any = conn.prepare(sql);
+        if (stmt && typeof stmt.run === "function") { stmt.run(); return; }
+        if (stmt && typeof stmt.all === "function") { stmt.all(); return; }
+        if (stmt && typeof stmt.get === "function") { stmt.get(); return; }
+    }
+    throw new Error("Runner: connection has no query/execute/run/exec/prepare method to execute SQL.");
 }
 
 function logBlock(name: string, content: string, print: boolean) {
@@ -37,14 +47,14 @@ function logBlock(name: string, content: string, print: boolean) {
 }
 
 /** Build a model -> file map from discovered migration modules. */
-async function buildModelIndex(files: string[]): Promise<Map<string,string>> {
+async function buildModelIndex(files: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     for (const f of files) {
         try {
             const mod = (await dynamicImportFile(f)) as TableModule;
             const name = mod?.default?.tableName;
             if (typeof name === "string" && name.trim()) {
-                // If duplicates exist, prefer the latest (higher numeric prefix)
+                // if duplicates exist, prefer the latest (higher numeric prefix)
                 map.set(name, f);
             }
         } catch {
@@ -54,13 +64,14 @@ async function buildModelIndex(files: string[]): Promise<Map<string,string>> {
     return map;
 }
 
+/** Silence noisy dialect warnings during tests if requested. */
 async function withSilencedDialectWarning<T>(fn: () => Promise<T>, enabled: boolean): Promise<T> {
     if (!enabled) return fn();
     const originalWarn = console.warn;
     console.warn = (...args: any[]) => {
         const msg = args?.[0];
         if (typeof msg === "string" && msg.includes("SQL dialect is not configured")) return;
-        return originalWarn.apply(console, args);
+        return (originalWarn as any).apply(console, args as any);
     };
     try {
         return await fn();
@@ -103,7 +114,7 @@ export async function runMigrations(opts: {
         const shouldClose = !externalConn;
 
         // 4) Tracking
-        await ensureMigrationsTable(conn, cfg.driver as any);
+        await ensureMigrationsTable(conn, cfg.driver as DBDriver);
         const appliedRows = await readAppliedAll(conn);
         const appliedModelSet = await readAppliedModelSet(conn);
 
@@ -127,22 +138,8 @@ export async function runMigrations(opts: {
         };
 
         const dropOneByModel = async (model: string) => {
-            // Import path from discovery (never trust DB filename due to driver escaping)
+            // Try to use discovered file path (safer than DB path on platform differences)
             const file = modelIndex.get(model);
-            if (!file) {
-                // If we can't find it in the index, skip import and just drop by name
-                const { name, content } = builder.buildDropTable(model);
-                logBlock(name, content, print);
-                await execSQL(conn, content);
-                await removeApplied(conn, model);
-                results.push({ name, content, file: model }); // record model in place of file
-                appliedModelSet.delete(model);
-                return;
-            }
-
-            const mod = (await dynamicImportFile(file)) as TableModule;
-            const defObj = mod?.default;
-            if (!defObj?.tableName || typeof defObj?.def !== "function") return;
 
             const { name, content } = builder.buildDropTable(model);
             logBlock(name, content, print);
@@ -150,20 +147,18 @@ export async function runMigrations(opts: {
             await execSQL(conn, content);
             await removeApplied(conn, model);
 
-            results.push({ name, content, file });
+            results.push({ name, content, file: file ?? model });
             appliedModelSet.delete(model);
         };
 
         // ---- Actions ----
         if (action === "up") {
             const next = (await currentBatch(conn)) + 1;
-            // apply every discovered model that isn't applied
             for (const [model, f] of modelIndex) {
                 await applyOne(f, model, next);
             }
 
         } else if (action === "down" || action === "drop") {
-            // Drop ALL applied in reverse applied order, using model names
             for (const r of [...appliedRows].reverse()) {
                 await dropOneByModel(r.model);
             }
@@ -202,7 +197,6 @@ export async function runMigrations(opts: {
             for (const model of toDrop) await dropOneByModel(model);
 
             const next = (await currentBatch(conn)) + 1;
-            // Recompute what’s still applied
             for (const [model, f] of modelIndex) {
                 if (!appliedModelSet.has(model)) await applyOne(f, model, next);
             }

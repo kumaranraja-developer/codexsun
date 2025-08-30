@@ -1,24 +1,43 @@
 // cortex/main.ts
-//
-// Entry point for the CodexSun CLI.
-// Runs through the central CLI router (cortex/cli/index.ts).
-// ESM-safe: no require(), no require.main checks.
 
-import "dotenv/config";            // auto-load .env variables
-import { runCli } from "./cli";
+import { createFastify } from "./server/create";
+import { mountApps } from "./server/mount";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { logger } from "./utils/logger";
 
-async function main() {
+const APPS_DIR = join(process.cwd(), "apps");
+
+export function discoverApps(): string[] {
     try {
-        await runCli(process.argv);
-    } catch (err) {
-        if (err instanceof Error) {
-            console.error(err.stack || err.message);
-        } else {
-            console.error(String(err));
-        }
-        process.exit(1);
+        return readdirSync(APPS_DIR).filter((n) => {
+            const p = join(APPS_DIR, n);
+            return statSync(p).isDirectory();
+        }).sort();
+    } catch {
+        return [];
     }
 }
 
-// kick it off
-void main();
+export async function createServer() {
+    const app = createFastify();
+
+    app.get("/healthz", async () => ({ ok: true, service: "codexsun" }));
+    app.get("/version", async () => ({
+        name: "codexsun",
+        version: process.env.npm_package_version ?? "0.0.0",
+        env: process.env.NODE_ENV ?? "development",
+    }));
+
+    const apps = discoverApps();
+    await mountApps(app, apps);
+
+    app.get("/", async () => ({
+        name: "codexsun",
+        apps,
+        tips: apps.map((n) => `GET /${n}`),
+    }));
+
+    logger.info("Framework booted");
+    return app;
+}

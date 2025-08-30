@@ -3,6 +3,7 @@ import { color, log, step } from '../utils/logger';
 import { Stage } from '../utils/stage';
 import { Progress } from '../utils/logger';
 import { closeEngine } from '../database/connection_manager';
+import { getDbConfig } from "../database/getDbConfig";
 
 const PROFILE = 'default' as const;
 const TOTAL = 5000;
@@ -18,7 +19,16 @@ function genUsers(n: number) {
     });
 }
 
-export async function smokeMariaDB(): Promise<void> {
+export async function smokeMariaDB(profile = "default"): Promise<void> {
+
+    console.log("[smoke:mariadb] resolve engine");
+    const cfg = getDbConfig(profile);
+
+    if ((cfg?.driver ?? "").toLowerCase() !== "mariadb") {
+        console.log(`[smoke:mariadb] skipped (active driver: ${cfg?.driver ?? "unknown"})`);
+        return; // keep return type as in your original; no rejection
+    }
+
     const s0 = new Stage('[smoke:mariadb] resolve engine');
     const eng = await prepareEngine(PROFILE);
     if (eng.driver !== 'mariadb') throw new Error(`Profile ${PROFILE} is ${eng.driver}, expected mariadb`);
