@@ -1,13 +1,5 @@
 // cortex/cli/index.ts
-//
-// Central CLI router.
-// - Dynamically loads subcommand handlers so startup stays fast.
-// - Add new commands by extending the `loaders` map below.
-// - Handlers may export one of:
-//     * default: (args: string[]) => Promise<void> | void
-//     * default: (...args: string[]) => Promise<void> | void
-//     * handle:  (args: string[]) => Promise<void> | void
-//     * handleX: (args: string[]) => Promise<void> | void  (where X is the Command name, e.g., handleDoctor)
+
 
 export type CommandHandler = (args: string[]) => Promise<void> | void;
 
@@ -24,10 +16,7 @@ const loaders: Record<string, () => Promise<LoadedModule>> = {
     doctor: () => import("./doctor/index"),
 
     // Migrations CLI:
-    // These point directly to your existing command modules that export a default run(...argv) function.
-    migrate: () => import("./migration/runner"),
-    rollback: () => import("./migration/rollback"),
-    fresh: () => import("./migration/fresh"),
+    migrate: () => import("./migration/migrator"),
 
     // Add more commands here as you grow:
     // serve:   () => import("./serve/index"),
