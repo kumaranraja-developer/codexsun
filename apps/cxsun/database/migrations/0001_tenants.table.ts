@@ -2,17 +2,8 @@
 import { defineTable } from "../../../../cortex/migration/Builder";
 
 export default defineTable("tenants", (table) => {
-    table.line("CREATE TABLE tenants (");
-    table.lines(
-        "  id TEXT PRIMARY KEY,",
-        "  slug TEXT UNIQUE NOT NULL,",
-        "  name TEXT NOT NULL,",
-        "  description TEXT,",
-        "  domain TEXT UNIQUE,",
-        "  logo DECIMAL(2),",
-        "  logo_bg INTEGER,",
-        "  created_at TIMESTAMP,",
-        "  updated_at TIMESTAMP"
-    );
-    table.line(");");
+    table.id();
+    table.text("name").unique();
+    table.text("display_name").notnull().default("Unnamed Tenant");
+    table.timestamps();
 });
