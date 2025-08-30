@@ -1,63 +1,41 @@
-// cortex/commands/doctor/boot.ts
-import { getSettings as _getSettings } from "../../settings/get_settings"; // <- your path
-import { runDoctorDatabase } from "./database";
+// cortex/cli/doctor/boot.ts
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { loadEnvAndSettings } from "./settings.js";
 
-type CheckResult = { ok: boolean; info?: string; code?: string; detail?: string };
+const CWD = process.cwd();
+const APPS_DIR = join(CWD, "apps");
 
-async function getSettingsNoWatch(): Promise<any> {
-    try {
-        const maybe = await (_getSettings as any)({ watch: false });
-        if (maybe) return maybe;
-    } catch { /* ignore and fall through */ }
-    return _getSettings();
+const log = {
+    ok:   (m: string) => console.log(`✅ ${m}`),
+    warn: (m: string) => console.warn(`⚠️  ${m}`),
+    sep:  (t: string) => console.log(`\n—— ${t} ——`),
+};
+
+export async function bootDoctor() {
+    log.sep("Boot Doctor");
+    // ensure env/settings are loaded up-front
+    const settings = await loadEnvAndSettings();
+    const nodeMajor = Number(process.versions.node.split(".")[0] ?? "0");
+    if (Number.isFinite(nodeMajor) && nodeMajor >= 18) log.ok(`Node OK (${process.version})`);
+    else log.warn(`Node ${process.version} — recommend >= 18`);
+    if (settings?.APP_ENV) log.ok(`APP_ENV=${settings.APP_ENV}`);
 }
 
-export async function runDoctorBoot(): Promise<void> {
-    console.log("— Boot Doctor —");
-
-    // 1) Settings (no watchers)
-    let settings: any;
+export async function appsDoctor() {
+    log.sep("Apps Doctor");
     try {
-        settings = await getSettingsNoWatch();
-        const env = settings?.APP_ENV ?? "unknown";
-        const logLevel = settings?.LOG_LEVEL ?? "info";
-        console.log(`✅ Settings loaded (APP_ENV=${env}, LOG_LEVEL=${logLevel})`);
-    } catch (err: any) {
-        console.error("❌ Failed to load settings:", err?.message || err);
-        process.exit(1);
-        return;
-    }
-
-    // 2) Checks in order
-    // Environment
-    {
-        const nodeMajor = Number((process.versions.node.split(".")[0] || "0"));
-        const ok = Number.isFinite(nodeMajor) && nodeMajor >= 18;
-        if (ok) {
-            console.log(`✅ Environment (node=${process.version})`);
+        const apps = readdirSync(APPS_DIR, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name)
+            .sort();
+        if (apps.length) {
+            log.ok(`Found ${apps.length} app(s):`);
+            for (const a of apps) console.log(`  • ${a}`);
         } else {
-            console.error(`❌ Environment failed (node=${process.version})`);
-            console.error("   detail=Node.js >= 18 is recommended");
+            log.warn("No apps found in /apps");
         }
-    }
-
-    // Database (delegated)
-    {
-        const res = await runDoctorDatabase(settings);
-        if (res.ok) {
-            console.log(`✅ Database (engine=${res.engine ?? settings?.DB_ENGINE ?? "unknown"})`);
-            process.exit(0);
-            return;
-        } else {
-            console.error(`❌ Database failed (engine=${res.engine ?? settings?.DB_ENGINE ?? "unknown"})`);
-            if (res.code) console.error(`   code=${res.code}`);
-            if (res.detail) console.error(`   detail=${res.detail}`);
-            process.exit(1);
-            return;
-        }
+    } catch {
+        log.warn("No /apps directory");
     }
 }
-
-// Also export a secondary alias if your CLI references it
-export { runDoctorBoot as doctorBoot };
-export default runDoctorBoot;

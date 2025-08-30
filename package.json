@@ -9,10 +9,10 @@
     "build": "tsup server.ts --format esm --dts --out-dir dist --clean",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json",
-    "clean:all": "pnpm -r run --if-present clean && pnpm -r exec rimraf dist .turbo *.tsbuildinfo && pnpm prune && pnpm store prune",
+    "clean:all": "pnpm -r run --if-present clean && pnpm prune && pnpm store prune",
     "test": "tsx  cortex/scripts/test_runner.ts",
     "test:watch": "tsx watch cortex/scripts/test_runner.ts",
-    "cx": "tsx cortex/main.ts",
+    "cx": "tsx cortex/cli/index.ts",
     "tests": "tsx cortex/tests/test.ts"
   },
   "engines": {
