@@ -6,6 +6,8 @@ export type ConnectionLike = {
     run?: (sql: string, params?: any[]) => Promise<any>;
 };
 
+type DBDriver = "mariadb" | "postgres" | "sqlite";
+
 async function exec(conn: ConnectionLike, sql: string, params: any[] = []) {
     if (typeof conn.query === "function") return conn.query(sql, params);
     if (typeof conn.execute === "function") return conn.execute(sql, params);
@@ -30,47 +32,61 @@ function sqlLiteral(v: unknown): string {
     return `'${s}'`;
 }
 
+/** Normalize a path to a portable form safe for all drivers (especially MySQL on Windows). */
+function toPortablePath(p: string): string {
+    // Windows accepts forward slashes; Linux/macOS already use them.
+    // Avoid backslashes because MySQL treats "\" as an escape in string literals.
+    return p.replace(/\\/g, "/");
+}
+
 /**
- * Ensure migrations table exists and is compatible.
- * Portable DDL:
- *   model  VARCHAR(255) PRIMARY KEY
- *   filename TEXT NOT NULL
- *   batch  INTEGER NOT NULL
- *   checksum VARCHAR(64) NOT NULL
+ * Ensure migrations table exists and is compatible across drivers.
+ * Standardized schema:
+ *   model      VARCHAR(191) PRIMARY KEY
+ *   filename   VARCHAR(1024) NOT NULL
+ *   batch      INTEGER NOT NULL
+ *   checksum   VARCHAR(64) NOT NULL
  *   applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
- *
- * IMPORTANT: TEXT **without** parentheses. (TEXT() is invalid in Postgres)
  */
-export async function ensureMigrationsTable(conn: ConnectionLike) {
-    // Create if missing (portable)
+export async function ensureMigrationsTable(conn: ConnectionLike, driver?: DBDriver) {
     const createSql = `
-        CREATE TABLE IF NOT EXISTS migrations (
-                                                  model       VARCHAR(255) PRIMARY KEY,
-            filename    TEXT NOT NULL,
-            batch       INTEGER NOT NULL,
-            checksum    VARCHAR(64) NOT NULL,
-            applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-    `;
+    CREATE TABLE IF NOT EXISTS migrations (
+      model       VARCHAR(191) PRIMARY KEY,
+      filename    VARCHAR(1024) NOT NULL,
+      batch       INTEGER NOT NULL,
+      checksum    VARCHAR(64) NOT NULL,
+      applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
     await exec(conn, createSql);
 
-    // Best-effort upgrades for older installs — harmless if columns already exist.
-    try { await exec(conn, `ALTER TABLE migrations ADD COLUMN model VARCHAR(255)`); } catch {}
-    try { await exec(conn, `ALTER TABLE migrations ADD COLUMN filename TEXT`); } catch {}
+    // Best-effort upgrades (ignore if already correct)
+    try { await exec(conn, `ALTER TABLE migrations ADD COLUMN model VARCHAR(191)`); } catch {}
+    try { await exec(conn, `ALTER TABLE migrations ADD COLUMN filename VARCHAR(1024)`); } catch {}
     try { await exec(conn, `ALTER TABLE migrations ADD COLUMN batch INTEGER NOT NULL DEFAULT 1`); } catch {}
     try { await exec(conn, `ALTER TABLE migrations ADD COLUMN checksum VARCHAR(64)`); } catch {}
     try { await exec(conn, `ALTER TABLE migrations ADD COLUMN applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`); } catch {}
+
+    // Driver-specific normalization
+    try {
+        if (driver === "mariadb") {
+            await exec(conn, `ALTER TABLE migrations MODIFY COLUMN filename VARCHAR(1024) NOT NULL`);
+            await exec(conn, `ALTER TABLE migrations MODIFY COLUMN model VARCHAR(191) NOT NULL`);
+        } else if (driver === "postgres") {
+            await exec(conn, `ALTER TABLE migrations ALTER COLUMN filename TYPE VARCHAR(1024)`);
+            await exec(conn, `ALTER TABLE migrations ALTER COLUMN model TYPE VARCHAR(191)`);
+        }
+    } catch {}
 }
 
 export type AppliedRow = {
     model: string;
-    filename: string;
+    filename: string; // stored as portable path with forward slashes
     batch: number;
     checksum: string;
     applied_at?: any;
 };
 
-/** Read all applied, ordered stably. */
 export async function readAppliedAll(conn: ConnectionLike): Promise<AppliedRow[]> {
     const sql = `SELECT model, filename, batch, checksum, applied_at
                  FROM migrations
@@ -88,7 +104,7 @@ export async function readAppliedAll(conn: ConnectionLike): Promise<AppliedRow[]
 
     return rows.map((r) => ({
         model: r.model ?? r.MODEL ?? r[0],
-        filename: r.filename ?? r.FILENAME ?? r[1],
+        filename: (r.filename ?? r.FILENAME ?? r[1]) as string,
         batch: Number(r.batch ?? r.BATCH ?? r[2] ?? 1),
         checksum: r.checksum ?? r.CHECKSUM ?? r[3] ?? "",
         applied_at: r.applied_at ?? r.APPLIED_AT ?? r[4],
@@ -100,7 +116,6 @@ export async function readAppliedModelSet(conn: ConnectionLike): Promise<Set<str
     return new Set(rows.map((r) => r.model));
 }
 
-/** Current max batch number (0 if table empty). */
 export async function currentBatch(conn: ConnectionLike): Promise<number> {
     let res: any;
     if (typeof conn.query === "function") res = await conn.query(`SELECT MAX(batch) AS max_batch FROM migrations;`);
@@ -117,7 +132,7 @@ export async function currentBatch(conn: ConnectionLike): Promise<number> {
     return Number.isFinite(n) ? n : 0;
 }
 
-/** Upsert by MODEL (PK), also storing filename and batch. */
+/** Upsert by MODEL (PK), store filename as portable path (forward slashes). */
 export async function recordApplied(
     conn: ConnectionLike,
     file: string,
@@ -126,17 +141,19 @@ export async function recordApplied(
     model: string
 ) {
     const checksumHex = sha256(content);
+    const portable = toPortablePath(file);
+
     const sqlInsert = `
-        INSERT INTO migrations (model, filename, batch, checksum)
-        VALUES (${sqlLiteral(model)}, ${sqlLiteral(file)}, ${sqlLiteral(batch)}, ${sqlLiteral(checksumHex)});
-    `;
+    INSERT INTO migrations (model, filename, batch, checksum)
+    VALUES (${sqlLiteral(model)}, ${sqlLiteral(portable)}, ${sqlLiteral(batch)}, ${sqlLiteral(checksumHex)});
+  `;
     try {
         await exec(conn, sqlInsert);
         return;
     } catch {
         const sqlUpdate = `
             UPDATE migrations
-            SET filename = ${sqlLiteral(file)},
+            SET filename = ${sqlLiteral(portable)},
                 batch = ${sqlLiteral(batch)},
                 checksum = ${sqlLiteral(checksumHex)}
             WHERE model = ${sqlLiteral(model)};
@@ -145,7 +162,6 @@ export async function recordApplied(
     }
 }
 
-/** Remove by MODEL (PK). */
 export async function removeApplied(conn: ConnectionLike, model: string) {
     const sql = `DELETE FROM migrations WHERE model = ${sqlLiteral(model)};`;
     await exec(conn, sql);
