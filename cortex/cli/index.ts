@@ -1,154 +1,129 @@
-#!/usr/bin/env tsx
 // cortex/cli/index.ts
 //
-// CLI that loads cortex/migration/Runner.{ts,js} and runs migration actions.
-// Supports Runner exported as:
-//  - default object:   export default { fresh, refresh, up, down }
-//  - default class:    export default class Runner { ... }
-//  - named class:      export class Runner { ... }
-//  - named object:     export const runner = { ... }
-//  - factory fn:       export function createRunner(){ return { fresh, ... } }
+// Central CLI router.
+// - Dynamically loads subcommand handlers so startup stays fast.
+// - Add new commands by extending the `loaders` map below.
+// - Handlers may export one of:
+//     * default: (args: string[]) => Promise<void> | void
+//     * default: (...args: string[]) => Promise<void> | void
+//     * handle:  (args: string[]) => Promise<void> | void
+//     * handleX: (args: string[]) => Promise<void> | void  (where X is the Command name, e.g., handleDoctor)
 
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 
-type RunnerLike = {
-    fresh?: (...a: any[]) => any;
-    refresh?: (...a: any[]) => any;
-    up?: (...a: any[]) => any;
-    down?: (...a: any[]) => any;
+export type CommandHandler = (args: string[]) => Promise<void> | void;
+
+type LoadedModule =
+    | { default?: Function; handle?: Function; [k: `handle${string}`]: Function | undefined }
+    | Record<string, unknown>;
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Command Loaders                                                                                */
+/* ---------------------------------------------------------------------------------------------- */
+
+const loaders: Record<string, () => Promise<LoadedModule>> = {
+    // Doctor commands: cx doctor <boot|database|migrate|apps|providers> [--watch]
+    doctor: () => import("./doctor/boot"),
+    migrate: () => import("./doctor/migrate"),
+
+    // Migrations CLI:
+    // These point directly to your existing command modules that export a default run(...argv) function.
+    // Add more commands here as you grow:
+    // serve:   () => import("./serve/index"),
+    // seed:    () => import("../database/seed"),
 };
 
-function exitWith(msg: string, code = 1): never {
-    console.error(msg);
-    process.exit(code);
+/* ---------------------------------------------------------------------------------------------- */
+/* Handler Resolution                                                                              */
+
+/* ---------------------------------------------------------------------------------------------- */
+
+function pickHandler(mod: LoadedModule, cmd: string): Function {
+    // Prefer an explicitly named handler first (e.g., handleDoctor), then generic `handle`, then `default`.
+    const byName = (mod as any)[`handle${cmd[0].toUpperCase()}${cmd.slice(1)}`];
+    const generic = (mod as any).handle;
+    const def = (mod as any).default;
+
+    const fn = byName || generic || def;
+    if (typeof fn === "function") return fn;
+
+    throw new Error(`Module for "${cmd}" does not export a handler function`);
 }
-function info(msg: string) { console.log(msg); }
-function ok(msg: string)   { console.log(`✅ ${msg}`); }
-function fail(msg: string): never { return exitWith(`❌ ${msg}`); }
 
-const repoRoot = process.cwd();
-const resolveFromRoot = (...p: string[]) => path.resolve(repoRoot, ...p);
-
-async function dynImport(file: string) {
+/**
+ * Invoke a handler that may accept (args: string[]) or (...args: string[]).
+ * We check arity to decide how to call it, but still allow flexible signatures.
+ */
+function invokeHandler(fn: Function, args: string[]) {
     try {
-        return await import(pathToFileURL(file).href);
-    } catch (e: any) {
-        return { __import_error: e };
+        // If the function expects 0 or 1 parameter, pass the single array.
+        // If it expects more than 1 parameter, spread the args.
+        return fn.length <= 1 ? fn(args) : fn(...args);
+    } catch (err) {
+        throw err;
     }
 }
 
-function isRunnerLike(v: any): v is RunnerLike {
-    if (!v) return false;
-    return ["fresh", "refresh", "up", "down"].some((k) => typeof v[k] === "function");
+/* ---------------------------------------------------------------------------------------------- */
+/* Usage / Help                                                                                    */
+
+/* ---------------------------------------------------------------------------------------------- */
+
+function usage(available: string[]) {
+    const list = available.length ? available.join(", ") : "(none)";
+    return `Usage: cx <command> [...args]
+
+Available commands:
+  ${list}
+
+Examples:
+  cx doctor boot
+  cx doctor database --watch
+  cx migrate --all
+  cx rollback --app cxsun --steps 1
+  cx fresh --all
+`;
 }
 
-function isCtor(v: any): v is new (...a: any[]) => any {
-    try {
-        return typeof v === "function" && v.prototype && Object.getOwnPropertyNames(v.prototype).length > 1;
-    } catch { return false; }
-}
+/* ---------------------------------------------------------------------------------------------- */
+/* Entry                                                                                           */
 
-async function loadRunnerInstance(): Promise<RunnerLike> {
-    const candidates = [
-        resolveFromRoot("cortex/migration/Runner.ts"),
-        resolveFromRoot("cortex/migration/Runner.js"),
-    ];
-    const runnerPath = candidates.find((f) => fs.existsSync(f));
-    if (!runnerPath) fail("Runner not found at cortex/migration/Runner.{ts,js}");
+/* ---------------------------------------------------------------------------------------------- */
 
-    const mod = await dynImport(runnerPath);
-    if ((mod as any).__import_error) {
-        const e: any = (mod as any).__import_error;
-        fail(`Failed to import Runner module: ${e?.stack || e?.message || e}`);
-    }
-
-    // 1) default export: object or class
-    if (mod?.default) {
-        if (isRunnerLike(mod.default)) {
-            ok("Using default object export from Runner");
-            return mod.default as RunnerLike;
-        }
-        if (isCtor(mod.default)) {
-            ok("Using default class export from Runner");
-            return new (mod.default as any)();
-        }
-    }
-
-    // 2) named class exports
-    const namedClassCandidates = ["Runner", "MigrationRunner"];
-    for (const name of namedClassCandidates) {
-        if (mod?.[name] && isCtor(mod[name])) {
-            ok(`Using named class export ${name} from Runner`);
-            return new (mod[name] as any)();
-        }
-    }
-
-    // 3) factory functions
-    const factoryCandidates = ["createRunner", "makeRunner", "getRunner"];
-    for (const name of factoryCandidates) {
-        if (typeof mod?.[name] === "function") {
-            const inst = mod[name]();
-            if (isRunnerLike(inst)) {
-                ok(`Using factory export ${name}() from Runner`);
-                return inst;
-            }
-        }
-    }
-
-    // 4) named object export
-    const objectCandidates = ["runner", "migration", "migrations"];
-    for (const name of objectCandidates) {
-        if (isRunnerLike(mod?.[name])) {
-            ok(`Using named object export ${name} from Runner`);
-            return mod[name];
-        }
-    }
-
-    console.error("Debug: Runner module keys:", Object.keys(mod));
-    fail("Runner export not found. Expected default/named class, default/named object with fresh/refresh/up/down, or a createRunner() factory.");
-}
-
-async function runMigrate(action: string) {
-    const runner = await loadRunnerInstance();
-
-    const valid: (keyof RunnerLike)[] = ["fresh", "refresh", "up", "down"];
-    if (!valid.includes(action as any) || typeof (runner as any)[action] !== "function") {
-        fail(`Unknown migrate action "${action}". Use one of: ${valid.join(", ")}`);
-    }
-
-    info(`—— Migration: ${action} ——`);
-    try {
-        const result = await (runner as any)[action]();
-        if (typeof result !== "undefined") console.log(result);
-        ok("Done");
-    } catch (e: any) {
-        fail(`Migration failed: ${e?.stack || e?.message || e}`);
-    }
-}
-
-(async function main() {
-    const [, , cmd, subcmd] = process.argv;
+export async function runCli(argv: string[] = process.argv): Promise<void> {
+    const [, , rawCmd = "", ...args] = argv;
+    const cmd = String(rawCmd || "").trim();
+    const available = Object.keys(loaders);
 
     if (!cmd) {
-        return exitWith(
-            [
-                "Usage:",
-                "  cx migrate fresh",
-                "  cx migrate refresh",
-                "  cx migrate up",
-                "  cx migrate down",
-            ].join("\n")
-        );
+        console.error(usage(available));
+        process.exitCode = 1;
+        return;
     }
 
-    switch (cmd) {
-        case "migrate":
-            if (!subcmd) fail("Missing migrate action (fresh | refresh | up | down)");
-            await runMigrate(subcmd);
-            break;
-        default:
-            fail(`Unknown command "${cmd}". Try: migrate`);
+    const loader = loaders[cmd];
+    if (!loader) {
+        console.error(`Unknown command: ${cmd}\n`);
+        console.error(usage(available));
+        process.exitCode = 1;
+        return;
     }
-})();
+
+    // Dynamically import the command module and pick its handler
+    let mod: LoadedModule;
+    try {
+        mod = await loader();
+    } catch (e: any) {
+        console.error(`Failed to load command "${cmd}": ${e?.message || e}`);
+        process.exitCode = 1;
+        return;
+    }
+
+    const handler = pickHandler(mod, cmd);
+
+    // Run the command (supports both (args) and (...args) styles)
+    const result = invokeHandler(handler, args);
+    if (result && typeof (result as Promise<void>).then === "function") {
+        await result;
+    }
+}
+
