@@ -1,133 +1,141 @@
 // cortex/migration/Blueprint.ts
 
-// ────────────────────────────────────────────────────────────────────────────
-// Public contract
-// ────────────────────────────────────────────────────────────────────────────
-export interface ColumnDef {
+export type SqlPiece = string;
+
+export type ColumnKind =
+    | "id_text_primary"
+    | "text"
+    | "integer"
+    | "decimal"
+    | "timestamp";
+
+export interface ColumnSpec {
     name: string;
-    type: string;
-    modifiers: string[];
+    kind: ColumnKind;
+    // optional attributes
+    length?: number;       // for text/varchar
+    precision?: number;    // decimal total digits
+    scale?: number;        // decimal scale
+    nullable?: boolean;    // default true
+    unique?: boolean;
+    default?: string | number | boolean | null;
 }
 
 export interface TableBlueprint {
+    // lifecycle
     reset(tableName: string): void;
-
-    // DSL
-    idTextPrimary(): void;
-    text(name: string, length?: number): ColumnBuilder;
-    integer(name: string): ColumnBuilder;
-    decimal(name: string, precision?: number, scale?: number): ColumnBuilder;
-    timestamps(withTz?: boolean): void;
-
-    // SQL
     buildCreate(): string;
     buildDrop(): string;
 
-    // Optional context hook (builder will call if present)
-    setContext?(ctx: unknown): void;
+    // column DSL
+    id(): ColumnBuilder;                  // alias for idTextPrimary()
+    idTextPrimary(): ColumnBuilder;
+
+    text(name: string, length?: number): ColumnBuilder;
+    integer(name: string): ColumnBuilder;
+    decimal(name: string, precision?: number, scale?: number): ColumnBuilder;
+
+    // helpers
+    timestamps(withDefaults?: boolean): void; // created_at / updated_at
 }
 
+/** Chainable column builder returned by DSL calls. */
 export interface ColumnBuilder {
-    primary(): ColumnBuilder;
     unique(): ColumnBuilder;
     notnull(): ColumnBuilder;
+    nullable(): ColumnBuilder;
     default(val: string | number | boolean | null): ColumnBuilder;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Base implementations used by all dialects
-// ────────────────────────────────────────────────────────────────────────────
-export abstract class AbstractBlueprint implements TableBlueprint {
+// ------------------ Common base (driver-agnostic storage) ------------------
+
+abstract class BaseBlueprint implements TableBlueprint {
     protected tableName = "";
-    protected columns: ColumnDef[] = [];
-    // Context bag is optional; dialects can read if needed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    protected ctx: any = undefined;
+    protected cols: ColumnSpec[] = [];
 
     reset(tableName: string): void {
         this.tableName = tableName;
-        this.columns = [];
+        this.cols = [];
     }
 
-    setContext(ctx: unknown): void {
-        this.ctx = ctx;
+    id(): ColumnBuilder {
+        return this.idTextPrimary();
     }
 
-    idTextPrimary(): void {
-        this.columns.push({
-            name: "id",
-            type: "TEXT",
-            modifiers: ["PRIMARY KEY"],
-        });
+    idTextPrimary(): ColumnBuilder {
+        const spec: ColumnSpec = { name: "id", kind: "id_text_primary", nullable: false };
+        this.cols.push(spec);
+        return this.wrap(spec);
     }
 
     text(name: string, length?: number): ColumnBuilder {
-        const type = length ? `VARCHAR(${length})` : "TEXT";
-        return this.pushAndWrap(name, type);
+        const spec: ColumnSpec = { name, kind: "text", length, nullable: true };
+        this.cols.push(spec);
+        return this.wrap(spec);
     }
 
     integer(name: string): ColumnBuilder {
-        return this.pushAndWrap(name, "INTEGER");
+        const spec: ColumnSpec = { name, kind: "integer", nullable: true };
+        this.cols.push(spec);
+        return this.wrap(spec);
     }
 
-    decimal(name: string, precision?: number, scale?: number): ColumnBuilder {
-        let type = "DECIMAL";
-        if (typeof precision === "number" && typeof scale === "number") {
-            type = `DECIMAL(${precision},${scale})`;
-        } else if (typeof precision === "number") {
-            // if only one arg provided, treat as precision with default scale
-            type = `DECIMAL(${precision},2)`;
+    decimal(name: string, precision = 10, scale = 2): ColumnBuilder {
+        const spec: ColumnSpec = { name, kind: "decimal", precision, scale, nullable: true };
+        this.cols.push(spec);
+        return this.wrap(spec);
+    }
+
+    timestamps(withDefaults = true): void {
+        // created_at / updated_at
+        const created: ColumnSpec = { name: "created_at", kind: "timestamp", nullable: true };
+        const updated: ColumnSpec = { name: "updated_at", kind: "timestamp", nullable: true };
+
+        if (withDefaults) {
+            // each driver will translate this appropriately
+            created.default = "__now__";
+            updated.default = "__now__";
         }
-        return this.pushAndWrap(name, type);
+        this.cols.push(created, updated);
     }
 
-    timestamps(withTz: boolean = true): void {
-        const ts = withTz ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP";
-        this.columns.push({
-            name: "created_at",
-            type: ts,
-            modifiers: ["DEFAULT CURRENT_TIMESTAMP"],
-        });
-        this.columns.push({
-            name: "updated_at",
-            type: ts,
-            modifiers: ["DEFAULT CURRENT_TIMESTAMP"],
-        });
-    }
-
-    // Helpers
-    private pushAndWrap(name: string, type: string): ColumnBuilder {
-        const col: ColumnDef = { name, type, modifiers: [] };
-        this.columns.push(col);
-
-        const builder: ColumnBuilder = {
-            primary: () => {
-                if (!col.modifiers.includes("PRIMARY KEY")) col.modifiers.push("PRIMARY KEY");
-                return builder;
-            },
-            unique: () => {
-                if (!col.modifiers.includes("UNIQUE")) col.modifiers.push("UNIQUE");
-                return builder;
-            },
-            notnull: () => {
-                if (!col.modifiers.some(m => m.toUpperCase() === "NOT NULL")) col.modifiers.push("NOT NULL");
-                return builder;
-            },
-            default: (val) => {
-                const lit =
-                    typeof val === "string" ? `'${val.replace(/'/g, "''")}'`
-                        : typeof val === "boolean" ? (val ? "TRUE" : "FALSE")
-                            : val === null ? "NULL"
-                                : String(val);
-                col.modifiers.push(`DEFAULT ${lit}`);
-                return builder;
-            },
+    protected wrap(spec: ColumnSpec): ColumnBuilder {
+        return {
+            unique: () => { spec.unique = true; return this.wrap(spec); },
+            notnull: () => { spec.nullable = false; return this.wrap(spec); },
+            nullable: () => { spec.nullable = true; return this.wrap(spec); },
+            default: (val) => { spec.default = val; return this.wrap(spec); },
         };
-
-        return builder;
     }
 
-    // Dialects must implement
+    // Driver-specific rendering
     abstract buildCreate(): string;
     abstract buildDrop(): string;
+
+    protected ensureTable(): void {
+        if (!this.tableName) throw new Error("Blueprint: tableName not set. Did you call reset(name)?");
+    }
 }
+
+// ------------------ Helpers used by drivers ------------------
+
+export function sqlIdent(name: string): string {
+    // simple identity quoting if needed later; keep bare for now
+    return name;
+}
+
+export function sqlDefaultLiteral(val: ColumnSpec["default"], driver: "sqlite" | "mariadb" | "postgres"): string | undefined {
+    if (val === undefined) return undefined;
+    if (val === "__now__") {
+        if (driver === "sqlite") return "CURRENT_TIMESTAMP";
+        if (driver === "mariadb") return "CURRENT_TIMESTAMP";
+        if (driver === "postgres") return "CURRENT_TIMESTAMP";
+    }
+    if (val === null) return "NULL";
+    if (typeof val === "string") return `'${val.replace(/'/g, "''")}'`;
+    if (typeof val === "boolean") return val ? "TRUE" : "FALSE";
+    return String(val);
+}
+
+// Expose the base so drivers can extend it.
+export { BaseBlueprint };

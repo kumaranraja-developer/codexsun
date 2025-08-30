@@ -1,26 +1,65 @@
 // cortex/migration/blueprint/mariadb.ts
-import { AbstractBlueprint } from "../Blueprint";
+import { BaseBlueprint, ColumnSpec, sqlIdent, sqlDefaultLiteral } from "../Blueprint";
 
-export class MariadbBlueprint extends AbstractBlueprint {
-    private coerce(t: string): string {
-        if (t.toUpperCase().includes("TIMESTAMP WITH TIME ZONE")) return "TIMESTAMP";
-        return t;
-    }
-
+export class MariadbBlueprint extends BaseBlueprint {
     buildCreate(): string {
-        const cols = this.columns.map(c => {
-            const mods = [...c.modifiers];
-            // Nudge updated_at to auto-update if user hasn't specified it
-            if (c.name === "updated_at" && !mods.some(m => /ON UPDATE/i.test(m))) {
-                mods.push("ON UPDATE CURRENT_TIMESTAMP");
-            }
-            return `${c.name} ${this.coerce(c.type)} ${mods.join(" ")}`.trim();
-        }).join(",\n  ");
-
-        return `CREATE TABLE IF NOT EXISTS ${this.tableName} (\n  ${cols}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`;
+        this.ensureTable();
+        const cols = this.renderColumns("mariadb");
+        return [
+            `CREATE TABLE IF NOT EXISTS ${sqlIdent(this.tableName)} (`,
+            cols.map(l => `  ${l}`).join(",\n"),
+            `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+            "",
+        ].join("\n");
     }
 
     buildDrop(): string {
-        return `DROP TABLE IF EXISTS ${this.tableName};`;
+        this.ensureTable();
+        return `DROP TABLE IF EXISTS ${sqlIdent(this.tableName)};`;
+    }
+
+    private renderColumns(_driver: "mariadb"): string[] {
+        return this.cols.map(c => {
+            switch (c.kind) {
+                case "id_text_primary": {
+                    // Common safe length for PK text in MariaDB
+                    return `${sqlIdent(c.name)} VARCHAR(191) PRIMARY KEY`;
+                }
+                case "text": {
+                    const len = c.length ?? 255;
+                    const parts = [`${sqlIdent(c.name)} VARCHAR(${len})`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "mariadb");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "integer": {
+                    const parts = [`${sqlIdent(c.name)} INT`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "mariadb");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "decimal": {
+                    const precision = c.precision ?? 10;
+                    const scale = c.scale ?? 2;
+                    const parts = [`${sqlIdent(c.name)} DECIMAL(${precision},${scale})`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "mariadb");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "timestamp": {
+                    const parts = [`${sqlIdent(c.name)} TIMESTAMP`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    const def = sqlDefaultLiteral(c.default, "mariadb");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+            }
+        });
     }
 }

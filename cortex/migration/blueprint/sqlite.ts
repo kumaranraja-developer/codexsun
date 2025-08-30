@@ -1,21 +1,64 @@
 // cortex/migration/blueprint/sqlite.ts
-import { AbstractBlueprint } from "../Blueprint";
+import { BaseBlueprint, ColumnSpec, sqlIdent, sqlDefaultLiteral } from "../Blueprint";
 
-export class SqliteBlueprint extends AbstractBlueprint {
-    private coerce(t: string): string {
-        // Friendlier print for timestamps in SQLite world
-        if (t.toUpperCase().includes("TIMESTAMP")) return "DATETIME";
-        return t;
-    }
-
+export class SqliteBlueprint extends BaseBlueprint {
     buildCreate(): string {
-        const cols = this.columns
-            .map(c => `${c.name} ${this.coerce(c.type)} ${c.modifiers.join(" ")}`.trim())
-            .join(",\n  ");
-        return `CREATE TABLE IF NOT EXISTS ${this.tableName} (\n  ${cols}\n);`;
+        this.ensureTable();
+        const lines: string[] = this.renderColumns("sqlite");
+        return [
+            `CREATE TABLE IF NOT EXISTS ${sqlIdent(this.tableName)} (`,
+            lines.map(l => `  ${l}`).join(",\n"),
+            `);`,
+            "",
+        ].join("\n");
     }
 
     buildDrop(): string {
-        return `DROP TABLE IF EXISTS ${this.tableName};`;
+        this.ensureTable();
+        return `DROP TABLE IF EXISTS ${sqlIdent(this.tableName)};`;
+    }
+
+    private renderColumns(_driver: "sqlite"): string[] {
+        return this.cols.map(c => {
+            switch (c.kind) {
+                case "id_text_primary": {
+                    // TEXT PRIMARY KEY in SQLite implicitly NOT NULL
+                    return `${sqlIdent(c.name)} TEXT PRIMARY KEY`;
+                }
+                case "text": {
+                    // SQLite ignores length, use TEXT
+                    const parts = [`${sqlIdent(c.name)} TEXT`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "sqlite");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "integer": {
+                    const parts = [`${sqlIdent(c.name)} INTEGER`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "sqlite");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "decimal": {
+                    // SQLite numeric affinity
+                    const parts = [`${sqlIdent(c.name)} NUMERIC`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    if (c.unique) parts.push("UNIQUE");
+                    const def = sqlDefaultLiteral(c.default, "sqlite");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+                case "timestamp": {
+                    const parts = [`${sqlIdent(c.name)} TIMESTAMP`];
+                    if (c.nullable === false) parts.push("NOT NULL");
+                    const def = sqlDefaultLiteral(c.default, "sqlite");
+                    if (def !== undefined) parts.push(`DEFAULT ${def}`);
+                    return parts.join(" ");
+                }
+            }
+        });
     }
 }

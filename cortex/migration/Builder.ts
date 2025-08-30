@@ -1,61 +1,81 @@
 // cortex/migration/Builder.ts
-import type { DBConfig } from "../database/types";
-import { MariadbBlueprint } from "./blueprint/mariadb";
-import { PostgresBlueprint } from "./blueprint/postgres";
-import { SqliteBlueprint } from "./blueprint/sqlite";
-import type { TableBlueprint } from "./Blueprint";
+import type { DBConfig, DBDriver } from '../database/types';
+import { getDbConfig } from '../database/getDbConfig';
 
-// what migration files receive
+import { SqliteBlueprint }   from './blueprint/sqlite';
+import { MariadbBlueprint }  from './blueprint/mariadb';
+import { PostgresBlueprint } from './blueprint/postgres';
+import type { TableBlueprint } from './Blueprint';
+
+// What a migration file exports as its default
 export type TableDef = (table: TableBlueprint) => void;
 
-export function getBlueprint(driver: DBConfig["driver"]) {
-    switch (driver) {
-        case "sqlite":   return new SqliteBlueprint();
-        case "mariadb":  return new MariadbBlueprint();
-        case "postgres": return new PostgresBlueprint();
-        default:
-            throw new Error(`Unsupported driver: ${driver as string}`);
-    }
-}
-
-// Small shape your tests can log easily
 export interface BuildResult {
-    name: string;     // table name
-    content: string;  // emitted SQL
+    name: string;
+    content: string;
 }
 
+/** Pick the right blueprint by driver. */
+function getBlueprint(driver: DBDriver): TableBlueprint {
+    switch (driver) {
+        case 'sqlite':   return new SqliteBlueprint();
+        case 'mariadb':  return new MariadbBlueprint();
+        case 'postgres': return new PostgresBlueprint();
+        default:
+            // TS safety; at runtime we'll never get here if DBDriver is correct.
+            // Still, throw a clean error if misconfigured.
+            throw new Error(`Unsupported driver: ${String(driver)}`);
+    }
+}
+
+/**
+ * Builder
+ * - Reads DBConfig (same source as connection_manager)
+ * - Switches blueprint by cfg.driver
+ * - Returns SQL content strings
+ */
 export class Builder {
-    private blueprint: TableBlueprint;
+    private cfg: DBConfig;
 
-    constructor(private cfg: DBConfig) {
-        this.blueprint = getBlueprint(cfg.driver);
-    }
-
-    createTable(name: string, def: TableDef, ctx?: unknown): BuildResult {
-        this.blueprint.reset(name);
-        this.wireContext(ctx);
-        def(this.blueprint);
-        const sql = this.blueprint.buildCreate();
-        return { name, content: sql };
-    }
-
-    dropTable(name: string, _ctx?: unknown): BuildResult {
-        this.blueprint.reset(name);
-        const sql = this.blueprint.buildDrop();
-        return { name, content: sql };
-    }
-
-    private wireContext(ctx?: unknown) {
-        const b = this.blueprint as any;
-        if (typeof b.setContext === "function") {
-            b.setContext(ctx);
-            return;
+    /**
+     * You can optionally pass a profile (e.g. 'default' | 'BLUE' | 'SANDBOX') to mirror
+     * connection_manager usage; falls back to 'default'.
+     */
+    constructor(profile: string = 'default') {
+        this.cfg = getDbConfig(profile);
+        if (!this.cfg?.driver) {
+            throw new Error('Builder: getDbConfig() returned no driver. Check your DB_* env.');
         }
-        b.ctx = ctx; // fallback, non-breaking
+    }
+
+    /** Create-table SQL from a migration table def. */
+    buildCreateTable(tableName: string, def: TableDef, p0: { file: string; }): BuildResult {
+        const blueprint = getBlueprint(this.cfg.driver);
+        blueprint.reset(tableName);   // ensure clean state per table
+        def(blueprint);               // let the migration file define columns + modifiers
+        return {
+            name: tableName,
+            content: blueprint.buildCreate(),
+        };
+    }
+
+    /** Drop-table SQL (no def needed). */
+    buildDropTable(tableName: string): BuildResult {
+        const blueprint = getBlueprint(this.cfg.driver);
+        blueprint.reset(tableName);
+        return {
+            name: tableName,
+            content: blueprint.buildDrop(),
+        };
     }
 }
 
-// Helper for migration files: defineTable("tenants", t => { ... })
+/**
+ * Helper API for migration files, matching what Runner expects:
+ *
+ *   export default defineTable("tenants", (t) => { ... })
+ */
 export function defineTable(tableName: string, def: TableDef) {
     return { tableName, def };
 }
+export default Builder;
