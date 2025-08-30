@@ -1,5 +1,4 @@
 // cortex/migration/tracking.ts
-
 import crypto from "crypto";
 
 export type ConnectionLike = {
@@ -19,9 +18,23 @@ export function sha256(s: string): string {
     return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+/** Safely literalize a JS value for SQL across pg/mysql/sqlite. */
+function sqlLiteral(v: unknown): string {
+    if (v === null || v === undefined) return "NULL";
+    if (typeof v === "number") return Number.isFinite(v) ? String(v) : "NULL";
+    if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+    if (v instanceof Date) {
+        // ISO-ish without 'Z' (let the DB interpret as local/UTC per engine)
+        const iso = v.toISOString().replace("T", " ").replace("Z", "");
+        return `'${iso.replace(/'/g, "''")}'`;
+    }
+    // string or other: stringify & escape single quotes
+    const s = String(v).replace(/'/g, "''");
+    return `'${s}'`;
+}
+
 /** Create migrations table with `batch`; try to upgrade older tables (no batch). */
 export async function ensureMigrationsTable(conn: ConnectionLike) {
-    // Create with `batch`
     const createSql = `
     CREATE TABLE IF NOT EXISTS migrations (
       filename    VARCHAR(255) PRIMARY KEY,
@@ -32,30 +45,19 @@ export async function ensureMigrationsTable(conn: ConnectionLike) {
   `;
     await exec(conn, createSql);
 
-    // Attempt to add batch if it doesn't exist (portable enough for sqlite/mariadb/pg)
+    // Add batch column if missing (best-effort; harmless if already exists)
     try {
         await exec(conn, `ALTER TABLE migrations ADD COLUMN batch INTEGER NOT NULL DEFAULT 1;`);
-    } catch {
-        // ignore if exists / not supported
-    }
+    } catch { /* ignore */ }
 
-    // Ensure no NULL batches remain
     try {
         await exec(conn, `UPDATE migrations SET batch = 1 WHERE batch IS NULL;`);
-    } catch {
-        // ignore
-    }
+    } catch { /* ignore */ }
 }
 
-/** Applied row shape (batch-centric). */
-export type AppliedRow = {
-    filename: string;
-    batch: number;
-    checksum: string;
-    applied_at?: any;
-};
+export type AppliedRow = { filename: string; batch: number; checksum: string; applied_at?: any };
 
-/** Read all applied, ordered by (batch asc, applied_at asc, filename asc). */
+/** Read all applied, ordered stably. */
 export async function readAppliedAll(conn: ConnectionLike): Promise<AppliedRow[]> {
     const sql = `SELECT filename, batch, checksum, applied_at FROM migrations ORDER BY batch ASC, applied_at ASC, filename ASC;`;
 
@@ -66,7 +68,7 @@ export async function readAppliedAll(conn: ConnectionLike): Promise<AppliedRow[]
 
     let rows: any[] = [];
     if (Array.isArray(res) && Array.isArray(res[0])) rows = res[0];               // mysql2
-    else if (Array.isArray(res)) rows = res;                                      // misc
+    else if (Array.isArray(res)) rows = res;                                      // misc drivers
     else if (res && Array.isArray((res as any).rows)) rows = (res as any).rows;   // pg
 
     return rows.map((r) => ({
@@ -77,7 +79,6 @@ export async function readAppliedAll(conn: ConnectionLike): Promise<AppliedRow[]
     })).filter((r) => typeof r.filename === "string");
 }
 
-/** Fast set of filenames already applied. */
 export async function readAppliedSet(conn: ConnectionLike): Promise<Set<string>> {
     const rows = await readAppliedAll(conn);
     return new Set(rows.map((r) => r.filename));
@@ -91,26 +92,37 @@ export async function currentBatch(conn: ConnectionLike): Promise<number> {
     else return 0;
 
     let rows: any[] = [];
-    if (Array.isArray(res) && Array.isArray(res[0])) rows = res[0];               // mysql2
+    if (Array.isArray(res) && Array.isArray(res[0])) rows = res[0];
     else if (Array.isArray(res)) rows = res;
-    else if (res && Array.isArray((res as any).rows)) rows = (res as any).rows;   // pg
+    else if (res && Array.isArray((res as any).rows)) rows = (res as any).rows;
 
     const val = rows[0]?.max_batch ?? rows[0]?.MAX_BATCH ?? rows[0]?.[0] ?? null;
     const n = Number(val);
     return Number.isFinite(n) ? n : 0;
 }
 
-/** Upsert an applied migration in a specific batch. */
+/** Upsert an applied migration in a specific batch (portable: inline literals). */
 export async function recordApplied(conn: ConnectionLike, filename: string, content: string, batch: number) {
     const checksumHex = sha256(content);
+    const sqlInsert = `
+    INSERT INTO migrations (filename, batch, checksum)
+    VALUES (${sqlLiteral(filename)}, ${sqlLiteral(batch)}, ${sqlLiteral(checksumHex)});
+  `;
     try {
-        await exec(conn, `INSERT INTO migrations (filename, batch, checksum) VALUES (?, ?, ?)`, [filename, batch, checksumHex]);
+        await exec(conn, sqlInsert);
+        return;
     } catch {
-        await exec(conn, `UPDATE migrations SET batch = ?, checksum = ? WHERE filename = ?`, [batch, checksumHex, filename]);
+        const sqlUpdate = `
+      UPDATE migrations
+      SET batch = ${sqlLiteral(batch)}, checksum = ${sqlLiteral(checksumHex)}
+      WHERE filename = ${sqlLiteral(filename)};
+    `;
+        await exec(conn, sqlUpdate);
     }
 }
 
-/** Remove applied record (for down/rollback). */
+/** Remove applied record (portable: inline literals). */
 export async function removeApplied(conn: ConnectionLike, filename: string) {
-    await exec(conn, `DELETE FROM migrations WHERE filename = ?`, [filename]);
+    const sql = `DELETE FROM migrations WHERE filename = ${sqlLiteral(filename)};`;
+    await exec(conn, sql);
 }
