@@ -1,227 +1,154 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 // cortex/cli/index.ts
-// Single-file CLI entry (ESM-safe) + optional extension via ./main-cli.{ts,js}
 //
-// Usage:
-//   pnpm cx doctor <boot|apps> [--watch]
-//   pnpm cx migrate <fresh|seed|refresh|up|down]
-//   pnpm cx                -> runs main() boot sequence
+// CLI that loads cortex/migration/Runner.{ts,js} and runs migration actions.
+// Supports Runner exported as:
+//  - default object:   export default { fresh, refresh, up, down }
+//  - default class:    export default class Runner { ... }
+//  - named class:      export class Runner { ... }
+//  - named object:     export const runner = { ... }
+//  - factory fn:       export function createRunner(){ return { fresh, ... } }
 
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { migrateAction } from "./doctor/database.js";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-// ESM-safe constants
-const CWD = process.cwd();
-const APPS_DIR = join(CWD, "apps");
-const HERE_FILE = fileURLToPath(import.meta.url);
-void HERE_FILE;
-
-// Small utils
-const log = {
-    ok:   (m: string) => console.log(`✅ ${m}`),
-    warn: (m: string) => console.warn(`⚠️  ${m}`),
-    bad:  (m: string) => console.error(`❌ ${m}`),
-    sep:  (t: string) => console.log(`\n—— ${t} ——`),
+type RunnerLike = {
+    fresh?: (...a: any[]) => any;
+    refresh?: (...a: any[]) => any;
+    up?: (...a: any[]) => any;
+    down?: (...a: any[]) => any;
 };
-function listApps(): string[] {
+
+function exitWith(msg: string, code = 1): never {
+    console.error(msg);
+    process.exit(code);
+}
+function info(msg: string) { console.log(msg); }
+function ok(msg: string)   { console.log(`✅ ${msg}`); }
+function fail(msg: string): never { return exitWith(`❌ ${msg}`); }
+
+const repoRoot = process.cwd();
+const resolveFromRoot = (...p: string[]) => path.resolve(repoRoot, ...p);
+
+async function dynImport(file: string) {
     try {
-        return readdirSync(APPS_DIR, { withFileTypes: true })
-            .filter((d) => d.isDirectory())
-            .map((d) => d.name)
-            .sort();
-    } catch { return []; }
-}
-function usage(apps = listApps()) {
-    console.log("Codexsun CLI");
-    console.log("Usage:");
-    console.log("  pnpm cx doctor <boot|apps> [--watch]");
-    console.log("  pnpm cx migrate <fresh|seed|refresh|up|down>");
-    console.log("  pnpm cx                # run boot sequence");
-    console.log("");
-    console.log("Apps:", apps.length ? apps.join(", ") : "(none found in /apps)");
-}
-
-// Dynamic import helper (handles .ts/.js)
-async function tryImport(paths: string[]): Promise<any | null> {
-    for (const p of paths) {
-        try {
-            if (existsSync(p)) return await import(pathToFileURL(p).toString());
-        } catch { /* keep trying */ }
-    }
-    return null;
-}
-
-// Optional extension hook
-async function tryLoadMainCli(): Promise<null | ((argv: string[]) => Promise<boolean>|boolean)> {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/main-cli.ts"),
-        resolve(CWD, "cortex/cli/main-cli.js"),
-    ]);
-    if (!mod) return null;
-    // Either export default (argv)=>handled or extend({ register(...) })
-    if (typeof mod.default === "function") return mod.default;
-    if (typeof mod.handle === "function")  return mod.handle;
-    return null;
-}
-
-/* ------------------------- Doctor subcommands ------------------------- */
-async function bootDoctor() {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/doctor/boot.ts"),
-        resolve(CWD, "cortex/cli/doctor/boot.js"),
-    ]);
-    if (!mod?.bootDoctor) throw new Error("doctor/boot.ts missing export: bootDoctor");
-    await mod.bootDoctor();
-}
-async function appsDoctor() {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/doctor/boot.ts"),
-        resolve(CWD, "cortex/cli/doctor/boot.js"),
-    ]);
-    if (!mod?.appsDoctor) throw new Error("doctor/boot.ts missing export: appsDoctor");
-    await mod.appsDoctor();
-}
-async function databaseDoctor() {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/doctor/database.ts"),
-        resolve(CWD, "cortex/cli/doctor/database.js"),
-    ]);
-    if (!mod?.databaseDoctor) throw new Error("doctor/database.ts missing export: databaseDoctor");
-    await mod.databaseDoctor();
-}
-async function migrationDoctor(action?: string) {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/doctor/database.ts"),
-        resolve(CWD, "cortex/cli/doctor/database.js"),
-    ]);
-    if (!mod?.migrateAction) throw new Error("doctor/database.ts missing export: migrateAction");
-    if (action) { await mod.migrateAction(action); return; }
-    // no-op default for main() sequence
-}
-async function apiDoctor() {
-    const mod = await tryImport([
-        resolve(CWD, "cortex/cli/doctor/restApi.ts"),
-        resolve(CWD, "cortex/cli/doctor/restApi.js"),
-    ]);
-    if (!mod?.apiDoctor) throw new Error("doctor/restApi.ts missing export: apiDoctor");
-    await mod.apiDoctor();
-}
-
-/* --------------------------- Runner + Tests --------------------------- */
-async function migration_runner() {
-    // by default call Runner.up(); override via main-cli.ts if needed
-    const mod = await tryImport([
-        resolve(CWD, "cortex/migration/Runner.ts"),
-        resolve(CWD, "cortex/migration/Runner.js"),
-        resolve(CWD, "Runner.ts"),
-        resolve(CWD, "Runner.js"),
-    ]);
-    if (mod?.up) {
-        log.sep("Migration Runner");
-        await mod.up();
-        log.ok("migrations: up complete");
-    } else {
-        log.warn("Runner.up() not found; skipping automatic migration_runner()");
-    }
-}
-async function tests() {
-    // stub: wire your test runner here if you want
-    // e.g., import a test harness or spawn a script
-    // For now we detect a simple test entry and call default() if provided
-    const mod = await tryImport([
-        resolve(CWD, "cortex/tests/test.ts"),
-        resolve(CWD, "cortex/tests/test.js"),
-        resolve(CWD, "test.ts"),
-        resolve(CWD, "test.js"),
-    ]);
-    if (mod && typeof mod.default === "function") {
-        log.sep("Tests");
-        await mod.default();
-    } else {
-        log.warn("No tests wired; skipping tests()");
+        return await import(pathToFileURL(file).href);
+    } catch (e: any) {
+        return { __import_error: e };
     }
 }
 
-/* ------------------------------ Routers ------------------------------- */
-async function runDoctor(args: string[]) {
-    const [sub = ""] = args;
-    if (sub === "boot") { await bootDoctor(); return; }
-    if (sub === "apps") { await appsDoctor(); return; }
-    if (sub === "database") { await databaseDoctor(); return; }
-    console.error(`Usage: cx doctor <boot|apps|database>`);
-    process.exitCode = 2;
+function isRunnerLike(v: any): v is RunnerLike {
+    if (!v) return false;
+    return ["fresh", "refresh", "up", "down"].some((k) => typeof v[k] === "function");
 }
 
-async function runMigrate(args: string[]) {
-    const [action = ""] = args;
-    const allowed = new Set(["fresh", "seed", "refresh", "up", "down"]);
-    if (!allowed.has(action)) {
-        console.error(`Usage: cx migrate <fresh|seed|refresh|up|down>`);
-        process.exitCode = 2;
-        return;
-    }
-    await migrateAction(action as any);
+function isCtor(v: any): v is new (...a: any[]) => any {
+    try {
+        return typeof v === "function" && v.prototype && Object.getOwnPropertyNames(v.prototype).length > 1;
+    } catch { return false; }
 }
 
-/* ------------------------------- main() ------------------------------- */
-export async function main(argv = process.argv) {
-    const maybeHandle = await tryLoadMainCli();
-    if (maybeHandle) {
-        const handled = await maybeHandle(argv);
-        if (handled) return;
+async function loadRunnerInstance(): Promise<RunnerLike> {
+    const candidates = [
+        resolveFromRoot("cortex/migration/Runner.ts"),
+        resolveFromRoot("cortex/migration/Runner.js"),
+    ];
+    const runnerPath = candidates.find((f) => fs.existsSync(f));
+    if (!runnerPath) fail("Runner not found at cortex/migration/Runner.{ts,js}");
+
+    const mod = await dynImport(runnerPath);
+    if ((mod as any).__import_error) {
+        const e: any = (mod as any).__import_error;
+        fail(`Failed to import Runner module: ${e?.stack || e?.message || e}`);
     }
 
-    const [, , cmd = "", ...args] = argv;
+    // 1) default export: object or class
+    if (mod?.default) {
+        if (isRunnerLike(mod.default)) {
+            ok("Using default object export from Runner");
+            return mod.default as RunnerLike;
+        }
+        if (isCtor(mod.default)) {
+            ok("Using default class export from Runner");
+            return new (mod.default as any)();
+        }
+    }
+
+    // 2) named class exports
+    const namedClassCandidates = ["Runner", "MigrationRunner"];
+    for (const name of namedClassCandidates) {
+        if (mod?.[name] && isCtor(mod[name])) {
+            ok(`Using named class export ${name} from Runner`);
+            return new (mod[name] as any)();
+        }
+    }
+
+    // 3) factory functions
+    const factoryCandidates = ["createRunner", "makeRunner", "getRunner"];
+    for (const name of factoryCandidates) {
+        if (typeof mod?.[name] === "function") {
+            const inst = mod[name]();
+            if (isRunnerLike(inst)) {
+                ok(`Using factory export ${name}() from Runner`);
+                return inst;
+            }
+        }
+    }
+
+    // 4) named object export
+    const objectCandidates = ["runner", "migration", "migrations"];
+    for (const name of objectCandidates) {
+        if (isRunnerLike(mod?.[name])) {
+            ok(`Using named object export ${name} from Runner`);
+            return mod[name];
+        }
+    }
+
+    console.error("Debug: Runner module keys:", Object.keys(mod));
+    fail("Runner export not found. Expected default/named class, default/named object with fresh/refresh/up/down, or a createRunner() factory.");
+}
+
+async function runMigrate(action: string) {
+    const runner = await loadRunnerInstance();
+
+    const valid: (keyof RunnerLike)[] = ["fresh", "refresh", "up", "down"];
+    if (!valid.includes(action as any) || typeof (runner as any)[action] !== "function") {
+        fail(`Unknown migrate action "${action}". Use one of: ${valid.join(", ")}`);
+    }
+
+    info(`—— Migration: ${action} ——`);
+    try {
+        const result = await (runner as any)[action]();
+        if (typeof result !== "undefined") console.log(result);
+        ok("Done");
+    } catch (e: any) {
+        fail(`Migration failed: ${e?.stack || e?.message || e}`);
+    }
+}
+
+(async function main() {
+    const [, , cmd, subcmd] = process.argv;
 
     if (!cmd) {
-        // Boot sequence
-        await bootDoctor();
-        // databaseDoctor now warns instead of failing when nothing is configured
-        await databaseDoctor();
-        await migrationDoctor(); // no-op placeholder
-        await apiDoctor();
-
-        // These are optional; they won’t throw if not present
-        await migration_runner();
-        await tests();
-        return; // <— don’t set a failing exit code on success path
+        return exitWith(
+            [
+                "Usage:",
+                "  cx migrate fresh",
+                "  cx migrate refresh",
+                "  cx migrate up",
+                "  cx migrate down",
+            ].join("\n")
+        );
     }
 
-    if (cmd === "doctor")  { await runDoctor(args);  return; }
-    if (cmd === "migrate") { await runMigrate(args); return; }
-
-    // treat as app name passthrough (optional)
-    const apps = listApps();
-    if (apps.includes(cmd)) {
-        // load apps/<name>/cli(.ts|.js) or cli/index.* or index.*
-        const entryCandidates = [
-            join(APPS_DIR, cmd, "cli.ts"),
-            join(APPS_DIR, cmd, "cli.js"),
-            join(APPS_DIR, cmd, "cli", "index.ts"),
-            join(APPS_DIR, cmd, "cli", "index.js"),
-            join(APPS_DIR, cmd, "index.ts"),
-            join(APPS_DIR, cmd, "index.js"),
-        ];
-        const entry = entryCandidates.find((p) => existsSync(p) && statSync(p).isFile());
-        if (!entry) {
-            log.bad(`No CLI entry found for app "${cmd}". Tried cli.{ts,js} or cli/index.* or index.*`);
-            process.exitCode = 1;
-            return;
-        }
-        const mod = await import(pathToFileURL(entry).toString());
-        if (typeof mod.default === "function") { await mod.default(args); return; }
-        if (typeof mod.handle  === "function") { await mod.handle(args);  return; }
-        log.bad(`No default/handle exported by ${entry}`);
-        process.exitCode = 1;
-        return;
+    switch (cmd) {
+        case "migrate":
+            if (!subcmd) fail("Missing migrate action (fresh | refresh | up | down)");
+            await runMigrate(subcmd);
+            break;
+        default:
+            fail(`Unknown command "${cmd}". Try: migrate`);
     }
-
-    log.bad(`Unknown command: "${cmd}"`);
-    usage(apps);
-    process.exitCode = 2;
-}
-
-// run immediately
-main().catch((e) => { console.error(e); process.exit(1); });
+})();

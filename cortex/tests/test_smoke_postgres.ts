@@ -1,7 +1,7 @@
 import { prepareEngine, execute, executeMany, fetchAll } from '../database/connection_manager';
-import { color, log, step } from '../utils/logger';
+import { color, log, step } from '../utils/locger';
 import { Stage } from '../utils/stage';
-import { Progress } from '../utils/logger';
+import { Progress } from '../utils/locger';
 import { getDbConfig } from "../database/getDbConfig";
 
 const PROFILE = 'BLUE' as const;

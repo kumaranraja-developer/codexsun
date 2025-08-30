@@ -4,7 +4,7 @@ import { createFastify } from "./server/create";
 import { mountApps } from "./server/mount";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { logger } from "./utils/logger";
+import { logger } from "./utils/log_cx";
 
 const APPS_DIR = join(process.cwd(), "apps");
 

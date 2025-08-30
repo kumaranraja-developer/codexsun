@@ -1,6 +1,6 @@
 // server.ts
 import { createServer, discoverApps } from "./cortex/main";
-import { logger } from "./cortex/utils/logger";
+import { logger } from "./cortex/utils/log_cx";
 
 async function runHttp() {
     const server = await createServer();

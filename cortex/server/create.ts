@@ -1,6 +1,6 @@
 // cortex/create.ts
 import Fastify, { FastifyInstance } from "fastify";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/log_cx";
 
 export function createFastify(): FastifyInstance {
     const app = Fastify({

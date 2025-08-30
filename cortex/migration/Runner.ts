@@ -97,7 +97,7 @@ export async function runMigrations(opts: {
     const silenceDialectWarn = opts.silenceDialectWarn ?? true;
 
     return withSilencedDialectWarning(async () => {
-        if (print) console.log("[test] starting migration run...");
+        if (print) console.log("[runner] starting migration run...");
 
         // 1) Driver & builder
         const cfg = getDbConfig(profile);
@@ -207,7 +207,29 @@ export async function runMigrations(opts: {
             else if (typeof (conn as any).end === "function") await (conn as any).end();
         }
 
-        if (print) console.log("[test] migration run finished. ✅");
+        if (print) console.log("[runner] migration run finished. ✅");
         return { results };
     }, silenceDialectWarn);
 }
+
+/* --------------------------- default export API --------------------------- */
+/* Keep the CLI happy: default object with fresh/refresh/up/down. */
+
+async function fresh(): Promise<void> {
+    await runMigrations({ action: "fresh" });
+}
+
+async function refresh(): Promise<void> {
+    await runMigrations({ action: "refresh" });
+}
+
+async function up(): Promise<void> {
+    await runMigrations({ action: "up" });
+}
+
+async function down(): Promise<void> {
+    // old semantics: “down” equals dropping everything in last batch
+    await runMigrations({ action: "down" });
+}
+
+export default { fresh, refresh, up, down };
