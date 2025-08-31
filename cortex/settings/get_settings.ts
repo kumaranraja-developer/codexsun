@@ -1,4 +1,4 @@
-// Simple env helpers (no tenant logic)
+// Simple env helpers (no tenants logic)
 
 export function getEnv(name: string): string | undefined {
     return process.env[name];

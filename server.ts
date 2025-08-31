@@ -10,8 +10,9 @@ async function runHttp() {
     await server.listen({ port, host });
     const apps = discoverApps();
 
-    logger.info(`codexsun root server running on http://${host}:${port}`);
+    logger.info(`codexsun root server running on http://localhost:${port}`);
     logger.info(`Apps discovered: ${apps.join(", ") || "(none)"}`);
+    if (apps.length) logger.info?.(`Try: http://localhost:${port}/${apps[0]}`);
 }
 
 (async () => {
