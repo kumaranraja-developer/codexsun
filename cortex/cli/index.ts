@@ -1,129 +1,66 @@
+#!/usr/bin/env ts-node
 // cortex/cli/index.ts
-//
-// Central CLI router.
-// - Dynamically loads subcommand handlers so startup stays fast.
-// - Add new commands by extending the `loaders` map below.
-// - Handlers may export one of:
-//     * default: (args: string[]) => Promise<void> | void
-//     * default: (...args: string[]) => Promise<void> | void
-//     * handle:  (args: string[]) => Promise<void> | void
-//     * handleX: (args: string[]) => Promise<void> | void  (where X is the Command name, e.g., handleDoctor)
+import "dotenv/config";
 
+type Handler = (argv: string[]) => Promise<void> | void;
 
-export type CommandHandler = (args: string[]) => Promise<void> | void;
+function usage(extra = "") {
+    return [
+        "Usage: cx <command> [...args]",
+        "",
+        "Commands:",
+        "  migrate <fresh|refresh|up|down> [--profile=NAME]",
+        "  doctor:boot",
+        "  doctor:db",
+        extra && "",
+        extra && extra.trim(),
+    ].filter(Boolean).join("\n");
+}
 
-type LoadedModule =
-    | { default?: Function; handle?: Function; [k: `handle${string}`]: Function | undefined }
-    | Record<string, unknown>;
+const handlers: Record<string, Handler> = {
+    async help() {
+        console.log(usage());
+    },
 
-/* ---------------------------------------------------------------------------------------------- */
-/* Command Loaders                                                                                */
-/* ---------------------------------------------------------------------------------------------- */
+    async "doctor:boot"() {
+        const { bootDoctor } = await import("./doctor/boot");
+        await bootDoctor();
+    },
 
-const loaders: Record<string, () => Promise<LoadedModule>> = {
-    // Doctor commands: cx doctor <boot|database|migrate|apps|providers> [--watch]
-    doctor: () => import("./doctor/boot"),
-    migrate: () => import("./doctor/migrate"),
+    async "doctor:db"() {
+        const { databaseDoctor } = await import("./doctor/database");
+        await databaseDoctor();
+    },
 
-    // Migrations CLI:
-    // These point directly to your existing command modules that export a default run(...argv) function.
-    // Add more commands here as you grow:
-    // serve:   () => import("./serve/index"),
-    // seed:    () => import("../database/seed"),
+    async migrate(argv) {
+        const [action, ...rest] = argv;
+        if (!action) {
+            console.error(usage("Examples:\n  cx migrate fresh\n  cx migrate up --profile=staging"));
+            process.exit(1);
+        }
+        const { runMigrate } = await import("./doctor/migrate");
+        await runMigrate(action, parseFlags(rest));
+    },
 };
 
-/* ---------------------------------------------------------------------------------------------- */
-/* Handler Resolution                                                                              */
-
-/* ---------------------------------------------------------------------------------------------- */
-
-function pickHandler(mod: LoadedModule, cmd: string): Function {
-    // Prefer an explicitly named handler first (e.g., handleDoctor), then generic `handle`, then `default`.
-    const byName = (mod as any)[`handle${cmd[0].toUpperCase()}${cmd.slice(1)}`];
-    const generic = (mod as any).handle;
-    const def = (mod as any).default;
-
-    const fn = byName || generic || def;
-    if (typeof fn === "function") return fn;
-
-    throw new Error(`Module for "${cmd}" does not export a handler function`);
+function parseFlags(argv: string[]) {
+    const flags: Record<string, string | boolean> = {};
+    for (const a of argv) {
+        if (a.startsWith("--")) {
+            const [k, v] = a.slice(2).split("=");
+            flags[k] = v ?? true;
+        }
+    }
+    return flags;
 }
 
-/**
- * Invoke a handler that may accept (args: string[]) or (...args: string[]).
- * We check arity to decide how to call it, but still allow flexible signatures.
- */
-function invokeHandler(fn: Function, args: string[]) {
+(async function main() {
+    const [cmd, ...rest] = process.argv.slice(2);
+    const handler = handlers[cmd ?? "help"] ?? handlers.help;
     try {
-        // If the function expects 0 or 1 parameter, pass the single array.
-        // If it expects more than 1 parameter, spread the args.
-        return fn.length <= 1 ? fn(args) : fn(...args);
+        await handler(rest);
     } catch (err) {
-        throw err;
+        console.error("❌ CLI error:", err);
+        process.exit(1);
     }
-}
-
-/* ---------------------------------------------------------------------------------------------- */
-/* Usage / Help                                                                                    */
-
-/* ---------------------------------------------------------------------------------------------- */
-
-function usage(available: string[]) {
-    const list = available.length ? available.join(", ") : "(none)";
-    return `Usage: cx <command> [...args]
-
-Available commands:
-  ${list}
-
-Examples:
-  cx doctor boot
-  cx doctor database --watch
-  cx migrate --all
-  cx rollback --app cxsun --steps 1
-  cx fresh --all
-`;
-}
-
-/* ---------------------------------------------------------------------------------------------- */
-/* Entry                                                                                           */
-
-/* ---------------------------------------------------------------------------------------------- */
-
-export async function runCli(argv: string[] = process.argv): Promise<void> {
-    const [, , rawCmd = "", ...args] = argv;
-    const cmd = String(rawCmd || "").trim();
-    const available = Object.keys(loaders);
-
-    if (!cmd) {
-        console.error(usage(available));
-        process.exitCode = 1;
-        return;
-    }
-
-    const loader = loaders[cmd];
-    if (!loader) {
-        console.error(`Unknown command: ${cmd}\n`);
-        console.error(usage(available));
-        process.exitCode = 1;
-        return;
-    }
-
-    // Dynamically import the command module and pick its handler
-    let mod: LoadedModule;
-    try {
-        mod = await loader();
-    } catch (e: any) {
-        console.error(`Failed to load command "${cmd}": ${e?.message || e}`);
-        process.exitCode = 1;
-        return;
-    }
-
-    const handler = pickHandler(mod, cmd);
-
-    // Run the command (supports both (args) and (...args) styles)
-    const result = invokeHandler(handler, args);
-    if (result && typeof (result as Promise<void>).then === "function") {
-        await result;
-    }
-}
-
+})();
