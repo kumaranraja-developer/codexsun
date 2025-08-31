@@ -1,7 +1,7 @@
 // cortex/migration/Builder.ts
 // Pure SQL generator: no config, no connection — Runner supplies the driver.
 
-import type { TableBlueprint } from "./Blueprint";
+import { ColumnSpec, ConstraintSpec, TableDefFn, Blueprint } from "./Blueprint";
 import { SqliteBlueprint } from "./blueprint/sqlite";
 import { MariadbBlueprint } from "./blueprint/mariadb";
 import { PostgresBlueprint } from "./blueprint/postgres";
@@ -10,14 +10,14 @@ import { PostgresBlueprint } from "./blueprint/postgres";
 export type DBDriver = "sqlite" | "mariadb" | "postgres";
 
 // Migration table def type
-export type TableDef = (t: TableBlueprint) => void;
+export type TableDef = (t: Blueprint) => void;
 
 export interface BuildResult {
     name: string;
     content: string;
 }
 
-function pickBlueprint(driver: DBDriver): TableBlueprint {
+function pickBlueprint(driver: DBDriver): Blueprint {
     switch (driver) {
         case "sqlite":   return new SqliteBlueprint();
         case "mariadb":  return new MariadbBlueprint();
@@ -25,6 +25,12 @@ function pickBlueprint(driver: DBDriver): TableBlueprint {
         default:
             throw new Error(`Unsupported driver for Builder: ${String(driver)}`);
     }
+}
+
+export interface BuiltTable {
+    name: string;
+    columns: ColumnSpec[];
+    constraints: ConstraintSpec[];
 }
 
 export class Builder {
@@ -53,8 +59,9 @@ export class Builder {
 }
 
 /** Helper for migration files: export default defineTable("tenants", (t) => { ... }) */
-export function defineTable(tableName: string, def: TableDef) {
-    return { tableName, def };
+export function defineTable(name: string, def: TableDefFn): BuiltTable {
+    const bp = new Blueprint(name).build(def);
+    return { name, columns: bp.table.columns, constraints: bp.table.constraints };
 }
 
 export default Builder;
