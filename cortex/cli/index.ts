@@ -5,6 +5,7 @@ import "dotenv/config";
 import { showBootUsage } from "./doctor/boot-help";
 import { runMigrations } from "../migration/Runner";
 import { showMigrationRunnerUsage } from "./migration/runner-help";
+import { pathToFileURL } from "url";
 
 type Action = "up" | "down" | "refresh" | "fresh";
 
@@ -52,8 +53,9 @@ function parseFlags(argv: string[]): Flags {
     return flags;
 }
 
-(async () => {
-    const argv = process.argv.slice(2);
+/** Exported entry so other modules can invoke the CLI programmatically. */
+export async function runCli(args?: string[]) {
+    const argv = args ?? process.argv.slice(2);
 
     if (argv.length === 0) {
         showBootUsage();
@@ -65,63 +67,68 @@ function parseFlags(argv: string[]): Flags {
 
     if (cmd === "migration") {
         const allowed: Action[] = ["up", "down", "refresh", "fresh"];
-
-        if (!sub) {
-            showMigrationRunnerUsage();
-            process.exit(0);
-        }
-
-        const action = sub as Action;
-        if (!allowed.includes(action)) {
-            console.error(`❌ Unknown migration subcommand: ${sub}\n`);
+        if (!sub || !allowed.includes(sub as Action)) {
             showMigrationRunnerUsage();
             process.exit(1);
         }
 
         const flags = parseFlags(rest);
 
+        // Build a typed options object for runMigrations (expects a single param)
         const profile =
-            (flags.profile as string) ??
-            process.env.DB_PROFILE ??
-            "default";
+            (flags.profile as string) ?? process.env.DB_PROFILE ?? "default";
 
-        // steps: accept number or numeric string; reject/ignore invalid
-        let steps: number | undefined = undefined;
+        let steps: number | undefined;
         if (flags.steps !== undefined) {
-            if (typeof flags.steps === "number") {
-                steps = flags.steps;
-            } else if (typeof flags.steps === "string") {
-                const n = Number(flags.steps);
-                if (!Number.isNaN(n)) steps = n;
-            }
+            const n = Number(flags.steps);
+            if (!Number.isNaN(n)) steps = n;
         }
 
-        // print: default true; allow --print=false or --no-print
-        const print =
-            flags.print === undefined ? true : Boolean(flags.print);
+        const print = flags.print === undefined ? true : Boolean(flags.print);
 
-        try {
-            const t0 = Date.now();
-            console.log(
-                `[migration] starting… action=${action} profile=${profile}` +
-                (steps !== undefined ? ` steps=${steps}` : "") +
-                ` print=${print}`
-            );
+        await runMigrations({
+            action: sub as Action,
+            profile,
+            steps,
+            print,
+        });
 
-            await runMigrations({ action, profile, steps, print });
-
-            console.log(`✅ migrations complete (${Date.now() - t0}ms)`);
-            process.exit(0);
-        } catch (err) {
-            console.error("❌ migration runner failed:", err);
-            process.exit(1);
-        }
+        process.exit(0);
     }
 
-    // Unknown top-level command
-    console.error("❌ Unknown command.\n");
+    // unknown command
+    console.error(`Unknown command: ${cmd}`);
     showBootUsage();
-    console.error("\nTip: run `pnpm cx migration up` to apply pending migrations.");
-    showMigrationRunnerUsage();
     process.exit(1);
-})();
+}
+
+/** ESM + CJS safe "main module" check */
+function isDirectExecution(): boolean {
+    // ESM path: compare current module URL to argv[1]
+    try {
+        if (typeof import.meta !== "undefined" && (import.meta as any).url) {
+            const current = (import.meta as any).url as string;
+            const invoked = pathToFileURL(process.argv[1]!).href;
+            if (current === invoked) return true;
+        }
+    } catch {
+        // ignore
+    }
+
+    // CJS path: require.main === module (only if require/module exist)
+    // Using typeof avoids ReferenceError in ESM
+    // @ts-ignore
+    if (typeof require !== "undefined" && typeof module !== "undefined") {
+        // @ts-ignore
+        return require.main === module;
+    }
+
+    return false;
+}
+
+if (isDirectExecution()) {
+    runCli().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}

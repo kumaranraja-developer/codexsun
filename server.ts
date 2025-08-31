@@ -1,25 +1,37 @@
 // server.ts
-import { createServer, discoverApps } from "./cortex/main";
-import { logger } from "./cortex/utils/log_cx";
+import "dotenv/config";
+import { createServer } from "http";
+import { AddressInfo } from "net";
+
+// Example logger – replace with your own logging util
+const logger = {
+    info: console.log.bind(console, "[INFO]"),
+    error: console.error.bind(console, "[ERROR]"),
+};
 
 async function runHttp() {
-    const server = await createServer();
-    const port = Number(process.env.PORT ?? 3000);
-    const host = process.env.HOST ?? "0.0.0.0";
+    const server = createServer((_req, res) => {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/plain");
+        res.end("OK\n");
+    });
 
-    await server.listen({ port, host });
-    const apps = discoverApps();
+    const port = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-    logger.info(`codexsun root server running on http://localhost:${port}`);
-    logger.info(`Apps discovered: ${apps.join(", ") || "(none)"}`);
-    if (apps.length) logger.info?.(`Try: http://localhost:${port}/${apps[0]}`);
+    await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, () => resolve());
+    });
+
+    const addr = server.address() as AddressInfo;
+    logger.info(`HTTP server listening on http://localhost:${addr.port}`);
 }
 
 (async () => {
     try {
         const mode = process.argv[2];
         if (mode === "cli") {
-            // your cli entry can also import { logger } and use it
+            // Run the CLI: node dist/server.js cli <...args>
             const { runCli } = await import("./cortex/cli/index");
             await runCli(process.argv.slice(3));
         } else {
