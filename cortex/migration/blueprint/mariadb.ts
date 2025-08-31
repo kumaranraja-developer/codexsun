@@ -172,10 +172,7 @@ function columnLine(c: ColumnSpec): string[] {
 
         case "slug": return [`${name} VARCHAR(255) NOT NULL UNIQUE`];
         case "version": return [`${name} INT NOT NULL DEFAULT 1`];
-        case "active": {
-            const check = ` CHECK (${name} REGEXP '^[0-9]{1,10}$')`;
-            return [`${name} CHAR(10) NOT NULL DEFAULT '1'${check}`];
-        }
+        case "active": return [`${name} INTEGER NOT NULL DEFAULT 1`];
 
         default:
             throw new Error(`MariaDB renderer: unsupported column kind "${c.kind}" on ${c.name}`);

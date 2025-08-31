@@ -135,21 +135,30 @@ async function qGet(conn: any, sql: string, params: any[] = []): Promise<any | n
 }
 
 async function qRun(conn: any, sql: string, params: any[] = []): Promise<RunResult> {
-    if (typeof conn.run === "function") {
-        const res = await tryWithPgRetry<any>((s, p) => conn.run(s, p), sql, params);
-        return res as RunResult;
-    }
-    if (typeof conn.execute === "function") {
-        const res = await tryWithPgRetry<any>((s, p) => conn.execute(s, p), sql, params);
-        return res as RunResult;
-    }
-    // Some clients only expose query for mutations (pg)
     if (typeof conn.query === "function") {
         const res = await tryWithPgRetry<any>((s, p) => conn.query(s, p), sql, params);
+
+        // 🔑 patch: normalize pg UPDATE/DELETE response
+        if (res && typeof res.rowCount === "number" && res.command === "UPDATE") {
+            return { rowCount: res.rowCount };
+        }
+        if (res && typeof res.rowCount === "number" && res.command === "DELETE") {
+            return { rowCount: res.rowCount };
+        }
+
         return res as RunResult;
     }
+
+    if (typeof conn.run === "function") {
+        return await tryWithPgRetry<any>((s, p) => conn.run(s, p), sql, params);
+    }
+    if (typeof conn.execute === "function") {
+        return await tryWithPgRetry<any>((s, p) => conn.execute(s, p), sql, params);
+    }
+
     throw new Error("Connection does not support run/execute/query");
 }
+
 
 function mapRow(r: any): TenantRow {
     return {
@@ -296,16 +305,17 @@ export class TenantRepo {
     static async softDelete(id: number): Promise<boolean> {
         const conn = await getConnection();
         const now = new Date().toISOString();
-        const sql = `UPDATE ${this.table}
+
+        const sql = `UPDATE tenants
                      SET deleted_at = ?
                      WHERE id = ? AND deleted_at IS NULL`;
-        const res = await qRun(conn, sql, [now, id]) as RunResult;
 
+        const res = await qRun(conn, sql, [now, id]) as RunResult;
         const changes = (res?.changes ?? res?.affectedRows ?? res?.rowCount ?? 0);
-        // If driver doesn't return changes, fall back to a read:
+
         if (!changes) {
             const after = await this.findById(id);
-            return after === null; // not found anymore -> treated as deleted or already deleted
+            return after === null;
         }
         return changes > 0;
     }

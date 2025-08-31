@@ -85,9 +85,10 @@ function columnLine(c: ColumnSpec): string[] {
         case "timestamps":
         case "timestampsTz":
             return [
-                `${q("created_at")} TEXT NOT NULL`,
-                `${q("updated_at")} TEXT NOT NULL`,
+                `\`${q("created_at")} TEXT DEFAULT (datetime('now'))`,
+                `\`${q("updated_at")} TEXT DEFAULT (datetime('now'))`
             ];
+
         case "softDeletes":
         case "softDeletesTz":
             return [`${q(c.name ?? "deleted_at")} TEXT NULL`];
@@ -171,11 +172,8 @@ function columnLine(c: ColumnSpec): string[] {
         // Conveniences
         case "slug": return [`${name} TEXT NOT NULL UNIQUE`];
         case "version": return [`${name} INTEGER NOT NULL DEFAULT 1`];
-        case "active": {
-            // SQLite has no regex by default; enforce length only.
-            const check = ` CHECK (length(${name}) <= 10)`;
-            return [`${name} TEXT NOT NULL DEFAULT '1'${check}`];
-        }
+        case "active": return [`${name} INTEGER NOT NULL DEFAULT 1`];
+
 
         default:
             throw new Error(`SQLite renderer: unsupported column kind "${c.kind}" on ${c.name}`);

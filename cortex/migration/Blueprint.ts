@@ -105,8 +105,8 @@ export class TableBuilder {
     timestamp(name: string) { return this.add('timestamp', name); }
     timestamps() { return this.add('timestamps'); }
     timestampsTz() { return this.add('timestampsTz'); }
-    softDeletes(name: string = 'deletedAt') { return this.add('softDeletes', name); }
-    softDeletesTz(name: string = 'deletedAt') { return this.add('softDeletesTz', name); }
+    softDeletes(name: string = 'deleted_at') { return this.add('softDeletes', name); }
+    softDeletesTz(name: string = 'deleted_at') { return this.add('softDeletesTz', name); }
     year(name: string) { return this.add('year', name); }
 
     // Binary
@@ -148,7 +148,7 @@ export class TableBuilder {
     // Conveniences
     slug(name: string = 'slug') { return this.add('slug', name); }
     version(name: string = 'version') { return this.add('version', name); }
-    active(name: string = 'active_id') { return this.add('active', name); }
+    active(name: string = 'is_active') { return this.add('active', name); }
 
     // Table constraints
     unique(cols: string[], name?: string) { this.constraints.push({ type: 'unique', cols, name, unique: true }); return this; }

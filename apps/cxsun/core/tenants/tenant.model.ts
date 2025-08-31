@@ -8,7 +8,7 @@ export class Tenant extends Model {
     email!: string | null;
     meta: Record<string, unknown> | null;
     isActive!: boolean;
-    createdAt!: Date;
-    updatedAt!: Date;
-    deletedAt!: Date;
+    created_at!: Date;
+    updated_at!: Date;
+    deleted_at!: Date;
 }
