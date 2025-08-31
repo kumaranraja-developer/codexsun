@@ -1,13 +1,14 @@
 // cortex/migration/mariadb.ts
 //
-// MariaDB renderer for the extended Blueprint DSL.
-// - Satisfies old Builder expectations by extending Blueprint and implementing
-//   reset/buildCreate/buildDrop on the class.
-// - Also exports functional `renderCreateTable` for direct use.
-// - Table suffix: ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+// MariaDB renderer that implements the abstract Blueprint contract.
+// Returns SQL strings (matching Builder’s expectations).
+//
+// Exports:
+//   - renderCreateTable (pure function)
+//   - class MariadbBlueprint (default)
 
-import { ColumnSpec, Blueprint, TableDefFn } from "../Blueprint";
-import { BuiltTable } from "../Builder"; // named export from your Builder.ts
+import { Blueprint, ColumnSpec, TableDefFn } from "../Blueprint";
+import { BuiltTable } from "../Builder";
 
 const q = (id: string) => `\`${id}\``;
 
@@ -24,15 +25,10 @@ function defaultSql(c: ColumnSpec) {
     if (c.default === null) return ` DEFAULT NULL`;
     return "";
 }
-
-function notnullSql(c: ColumnSpec) {
-    return c.notnull ? " NOT NULL" : c.nullable ? " NULL" : "";
-}
-
-// Only allow inline UNIQUE when unnamed; named uniques become table constraints.
+function notnullSql(c: ColumnSpec) { return c.notnull ? " NOT NULL" : c.nullable ? " NULL" : ""; }
 function uniqueInlineSql(c: ColumnSpec) {
     if (!c.unique) return "";
-    if (typeof c.unique === "string") return "";
+    if (typeof c.unique === "string") return ""; // named uniques as table constraints
     return " UNIQUE";
 }
 
@@ -196,7 +192,6 @@ function fkClause(c: ColumnSpec): string | null {
     )} (${q(c.references.column ?? "id")})${onDelete}${onUpdate}`;
 }
 
-
 function constraintLine(type: "unique" | "index", table: string, cols: string[], name?: string, unique?: boolean) {
     const idxName = name || `${type === "unique" || unique ? "uq" : "idx"}_${table}_${cols.join("_")}`;
     const colsSql = cols.map(q).join(", ");
@@ -204,48 +199,32 @@ function constraintLine(type: "unique" | "index", table: string, cols: string[],
     return `INDEX ${q(idxName)} (${colsSql})`;
 }
 
-// Functional renderer (for direct use)
 export function renderCreateTable(t: BuiltTable): string {
     const lines: string[] = [];
-
     for (const c of t.columns) lines.push(...columnLine(c));
     for (const c of t.columns) { const fk = fkClause(c); if (fk) lines.push(fk); }
-
     // move named per-column uniques to table level
     for (const c of t.columns) {
         if (c.name && typeof c.unique === "string") {
             lines.push(constraintLine("unique", t.name, [c.name], c.unique, true));
         }
     }
-
     for (const con of t.constraints) lines.push(constraintLine(con.type, t.name, con.cols, con.name, con.unique));
-
     const body = lines.map(l => `  ${l}`).join(",\n");
     return `CREATE TABLE IF NOT EXISTS ${q(t.name)} (\n${body}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`;
 }
 
-// Legacy-compatible class that fulfills Blueprint API expected by some Builders.
 export class MariadbBlueprint extends Blueprint {
     constructor(name: string = 'default') { super(name); }
 
-    override reset(name?: string) { return super.reset(name); }
-
-    // 👇 keep the same return type as the base class
-    override buildCreate(def: TableDefFn) {
-        // return the BuiltTable-like payload (no SQL)
-        return super.buildCreate(def);
-    }
-
-    // ➕ provide a dedicated helper that returns SQL
-    toSQLCreate(def: TableDefFn): string {
-        const built = this.buildCreate(def) as unknown as BuiltTable; // same shape
+    override buildCreate(def?: TableDefFn): string {
+        const built = this.buildPayload(def) as unknown as BuiltTable;
         return renderCreateTable(built);
     }
 
     override buildDrop(): string {
-        return `DROP TABLE IF EXISTS \`${this.tableName}\`;`;
+        return `DROP TABLE IF EXISTS ${q(this.tableName)};`;
     }
 }
-
 
 export default MariadbBlueprint;

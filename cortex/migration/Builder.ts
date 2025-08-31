@@ -1,7 +1,7 @@
 // cortex/migration/Builder.ts
 // Pure SQL generator: no config, no connection — Runner supplies the driver.
 
-import { ColumnSpec, ConstraintSpec, TableDefFn, Blueprint } from "./Blueprint";
+import {ColumnSpec, ConstraintSpec, TableDefFn, Blueprint, TableBlueprint} from "./Blueprint";
 import { SqliteBlueprint } from "./blueprint/sqlite";
 import { MariadbBlueprint } from "./blueprint/mariadb";
 import { PostgresBlueprint } from "./blueprint/postgres";
@@ -58,10 +58,16 @@ export class Builder {
     }
 }
 
+export interface BuiltTable {
+    name: string;
+    columns: ColumnSpec[];
+    constraints: ConstraintSpec[];
+}
+
 /** Helper for migration files: export default defineTable("tenants", (t) => { ... }) */
 export function defineTable(name: string, def: TableDefFn): BuiltTable {
-    const bp = new Blueprint(name).build(def);
-    return { name, columns: bp.table.columns, constraints: bp.table.constraints };
+    const bp = new TableBlueprint(name).build(def); // ← use concrete class
+    return { name: bp.tableName, columns: bp.table.columns, constraints: bp.table.constraints };
 }
 
 export default Builder;

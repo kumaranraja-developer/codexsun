@@ -1,4 +1,5 @@
 // apps/cxsun/core/domain/tenants/tenants.dto.ts
+// @ts-ignore
 import { z } from 'zod';
 
 export const CreateTenantDto = z.object({
