@@ -89,3 +89,24 @@ export async function healthz(profile: Profile = 'default'): Promise<boolean> {
     const eng = await prepareEngine(profile);
     return eng.testConnection();
 }
+
+// ✅ NEW: close a single profile’s engine/pool
+export async function teardownEngine(profile: Profile): Promise<void> {
+    const eng = enginesByProfile.get(profile);
+    try {
+        if (eng && typeof (eng as any).close === "function") {
+            await (eng as any).close(); // mariadb/mysql2: pool.end() / mariadb: pool.end()
+        }
+    } finally {
+        enginesByProfile.delete(profile);
+    }
+}
+
+// ✅ NEW: close everything
+export async function teardownAll(): Promise<void> {
+    const pending: Promise<any>[] = [];
+    for (const p of enginesByProfile.keys()) {
+        pending.push(teardownEngine(p));
+    }
+    await Promise.allSettled(pending);
+}

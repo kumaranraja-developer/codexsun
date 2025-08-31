@@ -1,9 +1,9 @@
 // cortex/migration/migration_runner.ts
 import Builder from "./Builder";
-import { getDbConfig } from "../database/getDbConfig";
-import { getConnection } from "../database/connection_manager";
-import { discoverMigrationFiles, dynamicImportFile } from "./discover";
-import type { TableBlueprint } from "./Blueprint";
+import {getDbConfig} from "../database/getDbConfig";
+import {getConnection} from "../database/connection_manager";
+import {discoverMigrationFiles, dynamicImportFile} from "./discover";
+import type {TableBlueprint} from "./Blueprint";
 import {
     ensureMigrationsTable,
     readAppliedAll,
@@ -17,6 +17,7 @@ import {
 
 export type Profile = string;
 type TableModule = { default: { tableName: string; def: (t: TableBlueprint) => void } };
+type SchemaObjectModule = { default: { name: string; columns: unknown[]; constraints?: unknown[] } };
 
 export interface RunOutput {
     results: Array<{ name: string; content: string; file: string }>;
@@ -25,16 +26,37 @@ export interface RunOutput {
 /** Exec SQL in a driver-agnostic way (adds exec/prepare for better-sqlite3). */
 async function execSQL(conn: ConnectionLike, sql: string): Promise<void> {
     const anyConn = conn as any;
-    if (typeof anyConn.query === "function")   { await anyConn.query(sql); return; }
-    if (typeof anyConn.execute === "function") { await anyConn.execute(sql); return; }
-    if (typeof anyConn.run === "function")     { await anyConn.run(sql); return; }
+    if (typeof anyConn.query === "function") {
+        await anyConn.query(sql);
+        return;
+    }
+    if (typeof anyConn.execute === "function") {
+        await anyConn.execute(sql);
+        return;
+    }
+    if (typeof anyConn.run === "function") {
+        await anyConn.run(sql);
+        return;
+    }
 
-    if (typeof anyConn.exec === "function")    { anyConn.exec(sql); return; }
+    if (typeof anyConn.exec === "function") {
+        anyConn.exec(sql);
+        return;
+    }
     if (typeof anyConn.prepare === "function") {
         const stmt: any = anyConn.prepare(sql);
-        if (stmt?.run) { stmt.run(); return; }
-        if (stmt?.all) { stmt.all(); return; }
-        if (stmt?.get) { stmt.get(); return; }
+        if (stmt?.run) {
+            stmt.run();
+            return;
+        }
+        if (stmt?.all) {
+            stmt.all();
+            return;
+        }
+        if (stmt?.get) {
+            stmt.get();
+            return;
+        }
     }
     throw new Error("Runner: connection has no query/execute/run/exec/prepare method to execute SQL.");
 }
@@ -51,10 +73,25 @@ async function buildModelIndex(files: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     for (const f of files) {
         try {
-            const mod = (await dynamicImportFile(f)) as TableModule;
-            const name = mod?.default?.tableName;
-            if (typeof name === "string" && name.trim()) map.set(name, f);
-        } catch { /* ignore bad modules */ }
+            const mod: any = await dynamicImportFile(f);
+            // Accept both shapes:
+            // 1) { default: { tableName, def } }
+            // 2) { default: { name, columns[, constraints] } }
+            const bpName = mod?.default?.tableName;
+            const soName = mod?.default?.name;
+            const chosen = typeof bpName === "string" && bpName.trim()
+                ? bpName
+                : (typeof soName === "string" && soName.trim() ? soName : undefined);
+            if (chosen) {
+                map.set(chosen, f);
+            } else {
+                // Visible diagnostic: migration file did not match either shape.
+                // (Non-fatal: we just skip it.)
+                // console.warn(`[runner] skipped migration (unrecognized export): ${f}`);
+            }
+        } catch {
+            // console.warn(`[runner] failed to import migration: ${f}`);
+        }
     }
     return map;
 }
@@ -67,7 +104,11 @@ async function withSilencedDialectWarning<T>(fn: () => Promise<T>, enabled: bool
         if (typeof msg === "string" && msg.includes("SQL dialect is not configured")) return;
         return (originalWarn as any).apply(console, args as any);
     };
-    try { return await fn(); } finally { console.warn = originalWarn; }
+    try {
+        return await fn();
+    } finally {
+        console.warn = originalWarn;
+    }
 }
 
 /** The shared migration engine (OLD connection style: profile -> getConnection(profile)). */
@@ -98,13 +139,16 @@ export async function runMigrations(opts: {
 
         // For visibility/debugging differences between CLI and tests:
         if (print) {
-            const dbg = { profile, driver: cfg.driver, host: (cfg as any).host, file: (cfg as any).file };
+            const dbg = {profile, driver: cfg.driver, host: (cfg as any).host, file: (cfg as any).file};
             console.log("[runner] resolved config:", dbg);
         }
 
         // 2) Discover files and build model index
         const files = discoverMigrationFiles();
         const modelIndex = await buildModelIndex(files); // model -> file
+        if (print && modelIndex.size === 0) {
+            console.log("[runner] no eligible migration modules found (expected either {tableName, def} or {name, columns}).");
+        }
 
         // 3) Connection (OLD: profile -> getConnection(profile))
         const externalConn = opts.conn;
@@ -118,33 +162,70 @@ export async function runMigrations(opts: {
 
         const results: RunOutput["results"] = [];
 
+        // const applyOne = async (file: string, model: string, batch: number) => {
+        //     const mod = (await dynamicImportFile(file)) as TableModule;
+        //     const defObj = mod?.default;
+        //     if (!defObj?.tableName || typeof defObj?.def !== "function") return;
+        //     if (appliedModelSet.has(model)) return;
+        //
+        //     const {name, content} = builder.buildCreateTable(model, defObj.def);
+        //     logBlock(name, content, print);
+        //
+        //     await execSQL(conn, content);
+        //     // old signature: (conn, file, content, batch, model)
+        //     await recordApplied(conn, file, content, batch, model);
+        //
+        //     results.push({name, content, file});
+        //     appliedModelSet.add(model);
+        // };
+
         const applyOne = async (file: string, model: string, batch: number) => {
-            const mod = (await dynamicImportFile(file)) as TableModule;
-            const defObj = mod?.default;
-            if (!defObj?.tableName || typeof defObj?.def !== "function") return;
+            const modAny: any = await dynamicImportFile(file);
+            const d = modAny?.default;
             if (appliedModelSet.has(model)) return;
 
-            const { name, content } = builder.buildCreateTable(model, defObj.def);
+            let name: string | undefined;
+            let content: string | undefined;
+
+            // Shape 1: blueprint-style { tableName, def }
+            if (d && typeof d.tableName === "string" && typeof d.def === "function") {
+                ({name, content} = builder.buildCreateTable(model, d.def));
+            }
+            // Shape 2: schema-object { name, columns[, constraints] }
+            else if (d && typeof d.name === "string" && Array.isArray(d.columns)) {
+                ({name, content} = builder.buildCreateFromSchemaObject({
+                    name: d.name,
+                    columns: d.columns,
+                    constraints: Array.isArray(d.constraints) ? d.constraints : [],
+                } as any));
+            } else {
+                // Unrecognized module shape: skip quietly (keeps older behavior),
+                // but we still want to make it debuggable if needed.
+                // if (print) console.warn(`[runner] skipping (unrecognized export): ${file}`);
+                return;
+            }
+
+            if (!name || !content) return;
             logBlock(name, content, print);
 
             await execSQL(conn, content);
-            // old signature: (conn, file, content, batch, model)
             await recordApplied(conn, file, content, batch, model);
 
-            results.push({ name, content, file });
+            results.push({name, content, file});
             appliedModelSet.add(model);
         };
+
 
         const dropOneByModel = async (model: string) => {
             const file = modelIndex.get(model); // helps produce a nice “file” in results
 
-            const { name, content } = builder.buildDropTable(model);
+            const {name, content} = builder.buildDropTable(model);
             logBlock(name, content, print);
 
             await execSQL(conn, content);
             await removeApplied(conn, model);
 
-            results.push({ name, content, file: file ?? model });
+            results.push({name, content, file: file ?? model});
             appliedModelSet.delete(model);
         };
 
@@ -202,6 +283,6 @@ export async function runMigrations(opts: {
         }
 
         if (print) console.log("[runner] migration run finished. ✅");
-        return { results };
+        return {results};
     }, silenceDialectWarn);
 }
