@@ -10,6 +10,7 @@ import {migrations} from "./test_migration";
 
 import { tenantControllerTests } from "../../apps/cxsun/core/tenants/test_tenant_controller";
 import { tenantValidatorTests } from "../../apps/cxsun/core/tenants/test_tenant_validator";
+import {tenantIntegrationTests} from "../../apps/cxsun/core/tenants/test_tenant_integration";
 
 async function main() {
 
@@ -20,10 +21,9 @@ async function main() {
     // await migrations();   // will print raw SQL from migrations
     // await migration_runner();   // will print raw SQL from migrations
 
-    await tenantControllerTests();
-    await tenantValidatorTests();
-
-
+    // await tenantControllerTests();
+    // await tenantValidatorTests();
+    await tenantIntegrationTests();
 }
 
 main().catch((e) => {

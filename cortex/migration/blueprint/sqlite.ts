@@ -53,7 +53,7 @@ function columnLine(c: ColumnSpec): string[] {
         case "longText": return [`${name} TEXT${nn}${uniq}`];
 
         // Numeric / IDs
-        case "id": return [`${name} TEXT PRIMARY KEY`]; // store UUID as TEXT
+        case "id": return [`${name} INTEGER PRIMARY KEY AUTOINCREMENT`];
         case "increments": return [`${name} INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT`];
         case "bigIncrements": return [`${name} INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT`];
         case "mediumIncrements":
@@ -85,12 +85,12 @@ function columnLine(c: ColumnSpec): string[] {
         case "timestamps":
         case "timestampsTz":
             return [
-                `${q("createdAt")} TEXT NOT NULL`,
-                `${q("updatedAt")} TEXT NOT NULL`,
+                `${q("created_at")} TEXT NOT NULL`,
+                `${q("updated_at")} TEXT NOT NULL`,
             ];
         case "softDeletes":
         case "softDeletesTz":
-            return [`${q(c.name ?? "deletedAt")} TEXT NULL`];
+            return [`${q(c.name ?? "deleted_at")} TEXT NULL`];
         case "year": return [`${name} INTEGER${nn}${dflt}${uniq}`];
 
         // Binary
@@ -141,7 +141,7 @@ function columnLine(c: ColumnSpec): string[] {
         case "geometry": return [`${name} BLOB${nn}${uniq}`];
 
         // Relationships
-        case "foreignId":
+        case "foreignId": return [`${name} INTEGER${nn}${uniq}`];
         case "foreignIdFor":
         case "foreignUlid":
         case "foreignUuid": return [`${name} TEXT${nn}${uniq}`];

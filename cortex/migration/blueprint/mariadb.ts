@@ -48,7 +48,7 @@ function columnLine(c: ColumnSpec): string[] {
         case "mediumText": return [`${name} MEDIUMTEXT${nn}`];
         case "longText": return [`${name} LONGTEXT${nn}`];
 
-        case "id": return [`${name} CHAR(36) PRIMARY KEY`];
+        case "id": return [`${name} INT PRIMARY KEY AUTO_INCREMENT`];
         case "increments": return [`${name} INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY`];
         case "bigIncrements": return [`${name} BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY`];
         case "mediumIncrements": return [`${name} MEDIUMINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY`];
@@ -80,12 +80,12 @@ function columnLine(c: ColumnSpec): string[] {
         case "timestamps":
         case "timestampsTz":
             return [
-                `\`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`,
-                `\`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
+                `\`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+                `\`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
             ];
         case "softDeletes":
         case "softDeletesTz":
-            return [`${q(c.name ?? "deletedAt")} TIMESTAMP NULL DEFAULT NULL`];
+            return [`${q(c.name ?? "deleted_at")} TIMESTAMP NULL DEFAULT NULL`];
         case "year": return [`${name} YEAR${nn}${dflt}${uniq}`];
 
         case "binary": return [`${name} VARBINARY(255)${nn}`];
@@ -134,7 +134,7 @@ function columnLine(c: ColumnSpec): string[] {
         case "geometry":
             return [`${name} GEOMETRY${nn}`];
 
-        case "foreignId": return [`${name} CHAR(36)${nn}${uniq}`];
+        case "foreignId": return [`${name} INTEGER${nn}${uniq}`];
         case "foreignIdFor": return [`${name} CHAR(36)${nn}${uniq}`];
         case "foreignUlid": return [`${name} CHAR(26)${nn}${uniq}`];
         case "foreignUuid": return [`${name} CHAR(36)${nn}${uniq}`];
