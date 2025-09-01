@@ -1,4 +1,4 @@
-// apps/cxsun/src/tenants/Tenant.list.tsx
+// apps/cxsun/src/tenant/Tenant.list.tsx
 import React from "react";
 import { useEffect, useState } from "react";
 
@@ -19,7 +19,7 @@ export default function TenantList() {
     useEffect(() => {
         fetch("/api/tenants")
             .then((res) => {
-                if (!res.ok) throw new Error("Failed to fetch tenants");
+                if (!res.ok) throw new Error("Failed to fetch tenant");
                 return res.json();
             })
             .then(setTenants)

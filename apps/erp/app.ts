@@ -1,8 +1,8 @@
 // apps/blog/app.ts
 import { FastifyInstance } from "fastify";
-import tenantApi from "./core/tenant/Tenant.api";
+import masterApi from "./core/master/Master.api";
 
 export async function registerApp(fastify: FastifyInstance) {
     // Register app modules
-    await fastify.register(tenantApi, { prefix: "/" });
+    await fastify.register(masterApi, { prefix: "/" });
 }

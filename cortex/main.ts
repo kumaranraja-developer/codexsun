@@ -1,46 +1,31 @@
-// cortex/server/main.ts
-import Fastify from "fastify";
-import path from "node:path";
-import { fileExists, importAbs, listDirs } from "./server/mount";
+// cortex/main.ts
+import { FastifyInstance } from "fastify";
+import { readdirSync } from "fs";
+import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 
-export async function bootApp() {
-    const app = Fastify({ logger: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    // 1) discover apps: /apps/<app>/app.ts
-    const appsRoot = path.join(process.cwd(), "apps");
-    const appDirs = await listDirs(appsRoot);
-    const mounted: string[] = [];
+export async function registerApps(fastify: FastifyInstance) {
+    const appsDir = path.resolve(__dirname, "../apps");
+    const apps = readdirSync(appsDir, { withFileTypes: true })
+        .filter((dir) => dir.isDirectory())
+        .map((dir) => dir.name);
 
-    for (const name of appDirs) {
-        const entry = path.join(appsRoot, name, "app.ts");
-        if (!(await fileExists(entry))) {
-            app.log.warn({ app: name }, `skip: ${entry} missing`);
-            continue;
+    for (const appName of apps) {
+        const appPath = path.join(appsDir, appName, "app.ts");
+
+        try {
+            // ✅ convert absolute path → file:// URL (fixes Windows ESM issue)
+            const { registerApp } = await import(pathToFileURL(appPath).href);
+
+            if (typeof registerApp === "function") {
+                await registerApp(fastify);
+                console.log(`✅ Registered app: ${appName}`);
+            }
+        } catch (err) {
+            console.error(`⚠️ Could not load app ${appName}`, err);
         }
-        const mod = await importAbs(entry);
-        const plugin = mod.default;
-        if (typeof plugin !== "function") {
-            app.log.warn({ app: name }, "skip: default export is not a Fastify plugin");
-            continue;
-        }
-
-        // 👉 mount with NO prefix (your choice). If you want /api, wrap in a scope.
-        await app.register(plugin);
-        mounted.push(name);
-        app.log.info({ app: name }, "mounted");
     }
-
-    // root health
-    app.get("/", async () => ({
-        name: "codexsun",
-        apps: mounted,
-    }));
-
-    // print routes for sanity
-    app.ready(() => {
-        app.log.info("\n=== ROUTES ===");
-        app.log.info(app.printRoutes());
-    });
-
-    return app;
 }

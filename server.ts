@@ -1,27 +1,41 @@
 // server.ts
+import Fastify from "fastify";
 import "dotenv/config";
-import { AddressInfo } from "net";
+import { formatServerLog, ServerLogger } from "./cortex/utils/server-logger";
+import { getAppHost, getAppPort } from "./cortex/settings/get_settings";
+import { registerApps } from "./cortex/main";
 
-(async () => {
+const HOST = getAppHost();
+const PORT = getAppPort();
+
+async function startServer() {
+    const fastify = Fastify({
+        logger: {
+            stream: {
+                write(msg: string) {
+                    try {
+                        const log = JSON.parse(msg);
+                        console.log(formatServerLog(log));
+                    } catch {
+                        console.log(msg.trim());
+                    }
+                },
+            },
+        },
+    });
+
+    // Register all Cortex apps
+    await registerApps(fastify);
+
+    fastify.get("/", async () => ({ message: "Welcome to Codexsun!" }));
+
     try {
-        const mode = process.argv[2];
-        if (mode === "cli") {
-            const { runCli } = await import("./cortex/cli/index");
-            await runCli(process.argv.slice(3));
-            return;
-        }
-
-        const { bootApp } = await import("./cortex/main");
-        const app = await bootApp();
-
-        const port = Number(process.env.PORT || 3000);
-        const host = process.env.HOST || "127.0.0.1";
-        await app.listen({ port, host });
-
-        // const addr = app.server.address() as AddressInfo;
-        // app.log.info(`Server listening at http://${host}:${addr.port}`);
+        await fastify.listen({ port: PORT, host: HOST });
+        ServerLogger(`🚀 Server running on http://${HOST}:${PORT}`);
     } catch (err) {
-        console.error("[ERROR] Fatal startup error", err);
+        fastify.log.error(err);
         process.exit(1);
     }
-})();
+}
+
+startServer();

@@ -18,3 +18,9 @@ pnpm add -Dw vite @vitejs/plugin-react
 pnpm add -D @fastify/static --filter @codexsun/app-cxsun
 
 pnpm add -D fastify-plugin --filter @codexsun/app-cxsun
+
+pnpm add -D chalk -w
+
+
+pnpm add -D pino chalk -w
+pnpm add -D pino-pretty -w

@@ -72,7 +72,7 @@ export class Builder {
     }
 }
 
-/** Helper for migration files: export default defineTable("tenants", (t) => { ... }) */
+/** Helper for migration files: export default defineTable("tenant", (t) => { ... }) */
 export function defineTable(name: string, def: TableDefFn): BuiltTable {
     // Use the base (driver-agnostic) TableBlueprint to collect schema
     const bp = new TableBlueprint(name).build(def);

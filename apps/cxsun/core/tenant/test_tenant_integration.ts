@@ -4,18 +4,18 @@ import express from "express";
 import http from "node:http";
 import {execSync} from "node:child_process";
 import chalk from "chalk";
-import tenantsRouter from "./tenants.api";
+import tenantsRouter from "./Tenant.api";
 import {TenantRepo} from "./tenant.repo";
 import {closeEngine, execute } from "../../../../cortex/database/connection_manager";
 
 /**
- * Starts a lightweight Express app with the tenants API mounted.
+ * Starts a lightweight Express app with the tenant API mounted.
  * Returns base URL and a shutdown function.
  */
 async function startServer() {
     const app = express();
     app.use(express.json());
-    app.use("/api/tenants", tenantsRouter);
+    app.use("/api/tenant", tenantsRouter);
 
     const server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -62,7 +62,7 @@ export async function tenantIntegrationTests() {
 
     try {
 // 1. Create Tenant
-        printStep(1, "Create tenant via POST /api/tenants");
+        printStep(1, "Create tenant via POST /api/tenant");
         {
             const res = await fetch(`${baseURL}/api/tenants`, {
                 method: "POST",
@@ -83,12 +83,12 @@ export async function tenantIntegrationTests() {
             printResult(true, "Tenant created successfully with id " + id);
 
             // 👇 add a direct DB check after create
-            const result = await execute("default", "SELECT * FROM tenants WHERE id = ?", [id]);
+            const result = await execute("default", "SELECT * FROM tenant WHERE id = ?", [id]);
             console.log(chalk.gray("   [debug] DB insert result object:"), result);
         }
 
         // 2. List Tenants
-        printStep(2, "List tenants via GET /api/tenants");
+        printStep(2, "List tenant via GET /api/tenant");
         {
             const res = await fetch(`${baseURL}/api/tenants?limit=5&offset=0`);
             const body = await res.json();
@@ -101,7 +101,7 @@ export async function tenantIntegrationTests() {
         }
 
         // 3. Show Tenant by Slug
-        printStep(3, "Show tenant via GET /api/tenants/by-slug/integ-acme");
+        printStep(3, "Show tenant via GET /api/tenant/by-slug/integ-acme");
         {
             const res = await fetch(`${baseURL}/api/tenants/by-slug/integ-acme`);
             const body = await res.json();
@@ -112,7 +112,7 @@ export async function tenantIntegrationTests() {
         }
 
         // 4. Update Tenant
-        printStep(4, "Update tenant via PATCH /api/tenants/:id");
+        printStep(4, "Update tenant via PATCH /api/tenant/:id");
         {
             const bySlug = await TenantRepo.findBySlug("integ-acme");
             assert.ok(bySlug, "precondition: slug should exist");
@@ -129,16 +129,16 @@ export async function tenantIntegrationTests() {
         }
 
         // // 5. Delete Tenant
-        // printStep(5, "Delete tenant via DELETE /api/tenants/:id");
+        // printStep(5, "Delete tenant via DELETE /api/tenant/:id");
         // {
         //     const bySlug = await TenantRepo.findBySlug("integ-acme");
         //     assert.ok(bySlug, "precondition: slug should exist before delete");
-        //     const res = await fetch(`${baseURL}/api/tenants/${bySlug!.id}`, {
+        //     const res = await fetch(`${baseURL}/api/tenant/${bySlug!.id}`, {
         //         method: "DELETE",
         //     });
         //     assert.equal(res.status, 204);
         //
-        //     const res2 = await fetch(`${baseURL}/api/tenants/by-slug/integ-acme`);
+        //     const res2 = await fetch(`${baseURL}/api/tenant/by-slug/integ-acme`);
         //     assert.equal(res2.status, 404);
         //     printResult(true, "Tenant deleted and confirmed not found");
         // }
@@ -155,7 +155,7 @@ export async function tenantIntegrationTests() {
             console.log(chalk.green("   ✔ Tenant found before delete, id=" + bySlugBefore.id));
 
             // 5b: Perform DELETE
-            console.log(chalk.blue("   [5b] Sending DELETE /api/tenants/:id..."));
+            console.log(chalk.blue("   [5b] Sending DELETE /api/tenant/:id..."));
             const res = await fetch(`${baseURL}/api/tenants/${bySlugBefore.id}`, {
                 method: "DELETE",
             });

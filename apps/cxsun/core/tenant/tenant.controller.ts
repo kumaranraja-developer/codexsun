@@ -16,7 +16,7 @@ export const TenantMW = {
 };
 
 export default class TenantController {
-    /** GET /api/tenants?limit=&offset= */
+    /** GET /api/tenant?limit=&offset= */
     static async index(req: Request, res: Response) {
         try {
             const limit = Math.min(Number(req.query.limit ?? 50), 200);
@@ -29,7 +29,7 @@ export default class TenantController {
         }
     }
 
-    /** GET /api/tenants/:id */
+    /** GET /api/tenant/:id */
     static async show(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);
@@ -42,7 +42,7 @@ export default class TenantController {
         }
     }
 
-    /** GET /api/tenants/by-slug/:slug */
+    /** GET /api/tenant/by-slug/:slug */
     static async showBySlug(req: Request, res: Response) {
         try {
             const row = await TenantRepo.findBySlug(req.params.slug);
@@ -54,7 +54,7 @@ export default class TenantController {
         }
     }
 
-    /** POST /api/tenants */
+    /** POST /api/tenant */
     static async store(req: Request, res: Response) {
         try {
             // body already validated by middleware
@@ -72,7 +72,7 @@ export default class TenantController {
         }
     }
 
-    /** PATCH /api/tenants/:id */
+    /** PATCH /api/tenant/:id */
     static async update(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);
@@ -86,7 +86,7 @@ export default class TenantController {
         }
     }
 
-    /** DELETE /api/tenants/:id (soft delete) */
+    /** DELETE /api/tenant/:id (soft delete) */
     static async destroy(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);

@@ -61,7 +61,7 @@ function mapRow(r: any): TenantRow {
 }
 
 export class TenantRepo {
-    static table = "tenants";
+    static table = "tenant";
 
     /** Adapt placeholders based on driver */
     private static async adapt(sql: string): Promise<string> {

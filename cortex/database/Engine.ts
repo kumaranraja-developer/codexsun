@@ -1,4 +1,4 @@
-// Shared Engine contract (profile-based, no tenants)
+// Shared Engine contract (profile-based, no tenant)
 export type MaybePromise<T> = T | Promise<T>;
 
 export interface QueryResult<T = any> {

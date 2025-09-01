@@ -1,4 +1,4 @@
-// Simple env helpers (no tenants logic)
+// Simple env helpers (no tenant logic)
 
 export function getEnv(name: string): string | undefined {
     return process.env[name];
@@ -45,4 +45,16 @@ export function getPoolSettings(prefix?: string) {
         const n = Number(raw);
         return Number.isFinite(n) ? n : undefined;
     }
+}
+
+/** Application host (APP_HOST or HOST) */
+export function getAppHost(): string {
+    const raw = getEnv("APP_HOST") || getEnv("HOST");
+    if (!raw) return "0.0.0.0";
+    return raw.replace(/^https?:\/\//, ""); // strip protocol if present
+}
+
+/** Application port (APP_PORT or PORT) */
+export function getAppPort(): number {
+    return getEnvInt("APP_PORT", getEnvInt("PORT", 3000)) ?? 3000;
 }
