@@ -1,21 +1,21 @@
-import { Engine } from './Engine';
-import { getDbConfig } from './getDbConfig';
-import type { DBConfig, DBDriver, NetworkDBConfig, SQLiteDBConfig } from './types';
+import {Engine} from './Engine';
+import {getDbConfig} from './getDbConfig';
+import type {DBConfig, DBDriver, NetworkDBConfig} from './types';
 
 type Profile = 'default' | 'BLUE' | 'SANDBOX' | (string & {});
 
 const enginesByProfile: Map<string, Engine> = new Map();
 
-import { SQLiteEngine } from './engines/sqlite_engine';
-import { PostgresEngine } from './engines/postgres_engine';
-import { MariaDBEngine } from './engines/mariadb_engine';
-import { MysqlEngine } from './engines/mysql_engine';
-import { MongodbEngine } from './engines/mongodb_engine';
+import {SqliteEngine} from './engines/sqlite_engine';
+import {PostgresEngine} from './engines/postgres_engine';
+import {MariaDBEngine} from './engines/mariadb_engine';
+import {MysqlEngine} from './engines/mysql_engine';
+import {MongodbEngine} from './engines/mongodb_engine';
 
 function buildEngine(cfg: DBConfig): Engine {
     switch (cfg.driver) {
         case 'sqlite':
-            return new SQLiteEngine(cfg as SQLiteDBConfig);
+            return new SqliteEngine(cfg as NetworkDBConfig);
         case 'postgres':
             return new PostgresEngine(cfg as NetworkDBConfig);
         case 'mariadb':
@@ -104,10 +104,12 @@ export async function begin(profile: Profile) {
     const eng = await prepareEngine(profile);
     return eng.begin();
 }
+
 export async function commit(profile: Profile) {
     const eng = await prepareEngine(profile);
     return eng.commit();
 }
+
 export async function rollback(profile: Profile) {
     const eng = await prepareEngine(profile);
     return eng.rollback();

@@ -283,6 +283,9 @@ importers:
       pino:
         specifier: ^9.9.0
         version: 9.9.0
+      sqlite:
+        specifier: ^5.1.1
+        version: 5.1.1
       sqlite3:
         specifier: ^5.1.6
         version: 5.1.7
@@ -3968,6 +3971,9 @@ packages:
 
   sqlite3@5.1.7:
     resolution: {integrity: sha512-GGIyOiFaG+TUra3JIfkI/zGP8yZYLPQ0pl1bH+ODjiX57sPhrLU5sQJn1y9bDKZUFYkX1crlrPfSYt0BKKdkog==}
+
+  sqlite@5.1.1:
+    resolution: {integrity: sha512-oBkezXa2hnkfuJwUo44Hl9hS3er+YFtueifoajrgidvqsJRQFpc5fKoAkAor1O5ZnLoa28GBScfHXs8j0K358Q==}
 
   sqlstring@2.3.1:
     resolution: {integrity: sha512-ooAzh/7dxIG5+uDik1z/Rd1vli0+38izZhGzSa34FwR7IbelPWCCKSNIl8jlL/F7ERvy8CB2jNeM1E9i9mXMAQ==}
@@ -8462,6 +8468,8 @@ snapshots:
     transitivePeerDependencies:
       - bluebird
       - supports-color
+
+  sqlite@5.1.1: {}
 
   sqlstring@2.3.1: {}
 

@@ -1,17 +1,21 @@
 // cortex/database/engines/mariadb_engine.ts
-import {BaseEngine} from '../Engine';
-import type {NetworkDBConfig} from '../types';
-import mariadb, {Pool, PoolConnection} from 'mariadb';
-import {queryAdapter, rowsAdapter} from '../queryAdapter'; // shared helpers
+import { BaseEngine } from "../Engine";
+import type { NetworkDBConfig } from "../types";
+import mariadb, { Pool, PoolConnection } from "mariadb";
+import { queryAdapter, rowsAdapter } from "../queryAdapter";
 
 export class MariaDBEngine extends BaseEngine {
     private cfg: NetworkDBConfig;
     private pool: Pool | null = null;
 
     constructor(cfg: NetworkDBConfig) {
-        super({profile: cfg.profile, driver: 'mariadb', cfgKey: cfg.cfgKey});
+        super({ profile: cfg.profile, driver: "mariadb", cfgKey: cfg.cfgKey });
         this.cfg = cfg;
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  CONNECTION HANDLING                                                    */
+    /* ---------------------------------------------------------------------- */
 
     protected async _connect(): Promise<void> {
         if (this.pool) return;
@@ -23,7 +27,7 @@ export class MariaDBEngine extends BaseEngine {
             database: this.cfg.database,
             acquireTimeout: this.cfg.pool?.acquireTimeoutMillis ?? 15000,
             connectionLimit: this.cfg.pool?.max ?? 10,
-            ssl: this.cfg.ssl ? {} : undefined,
+            ssl: this.cfg.ssl === true || this.cfg.ssl === "require" ? {} : undefined,
             socketPath: this.cfg.socketPath,
         });
         const conn = await this.pool.getConnection();
@@ -42,6 +46,10 @@ export class MariaDBEngine extends BaseEngine {
         return this.pool!.getConnection();
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  QUERY HELPERS                                                          */
+    /* ---------------------------------------------------------------------- */
+
     protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
         const result = await this._execute(sql, params);
         return (result.rows?.[0] ?? null) as T | null;
@@ -53,24 +61,22 @@ export class MariaDBEngine extends BaseEngine {
     }
 
     protected async _execute(sql: string, params?: unknown): Promise<any> {
-        const {sql: normSql, params: normParams} = queryAdapter("mariadb", sql, params);
+        const { sql: normSql, params: normParams } = queryAdapter("mariadb", sql, params);
         const conn = await this._get_connection();
         try {
             const res: any = await conn.query(normSql, normParams as any);
 
-            // 🔑 Detect SELECT queries
+            // SELECT
             if (/^\s*select/i.test(normSql)) {
                 const rows = rowsAdapter("mariadb", Array.isArray(res) ? res : []);
-                return {rows, rowCount: rows.length};
+                return { rows, rowCount: rows.length };
             }
 
-            // Non-SELECT → mutation
-            const rows = rowsAdapter("mariadb", Array.isArray(res) ? res : []);
+            // Non-SELECT → OkPacket
             const insertId = res?.insertId !== undefined ? Number(res.insertId) : undefined;
-
             return {
-                rows,
-                rowCount: rows.length || res?.affectedRows || 0,
+                rows: [],
+                rowCount: res?.affectedRows ?? 0,
                 affectedRows: res?.affectedRows ?? 0,
                 insertId,
                 lastID: insertId,
@@ -81,28 +87,25 @@ export class MariaDBEngine extends BaseEngine {
     }
 
     protected async _executemany(sql: string, paramSets: unknown[]): Promise<any> {
-        const {sql: normSql} = queryAdapter("mariadb", sql);
+        const { sql: normSql } = queryAdapter("mariadb", sql);
         const conn = await this._get_connection();
         try {
-            // 🔑 Detect SELECT queries
             if (/^\s*select/i.test(normSql)) {
                 const allRows: any[] = [];
                 for (const p of paramSets) {
-                    const {params: normParams} = queryAdapter("mariadb", sql, p);
+                    const { params: normParams } = queryAdapter("mariadb", sql, p);
                     const res: any = await conn.query(normSql, normParams as any);
-                    if (Array.isArray(res)) {
-                        allRows.push(...res);
-                    }
+                    if (Array.isArray(res)) allRows.push(...res);
                 }
                 const rows = rowsAdapter("mariadb", allRows);
-                return {rows, rowCount: rows.length};
+                return { rows, rowCount: rows.length };
             }
 
-            // Non-SELECT → batch mutations
+            // Non-SELECT batch
             let total = 0;
             const insertIds: number[] = [];
             for (const p of paramSets) {
-                const {params: normParams} = queryAdapter("mariadb", sql, p);
+                const { params: normParams } = queryAdapter("mariadb", sql, p);
                 const res: any = await conn.query(normSql, normParams as any);
                 total += res?.affectedRows ?? 0;
                 if (res?.insertId !== undefined) {
@@ -118,22 +121,35 @@ export class MariaDBEngine extends BaseEngine {
                 lastID: insertIds[insertIds.length - 1],
             };
         } finally {
-           await conn.release();
+            await conn.release();
         }
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  TRANSACTIONS                                                           */
+    /* ---------------------------------------------------------------------- */
 
     protected async _begin(): Promise<void> {
-        await this._execute("BEGIN");
+        const conn = await this._get_connection();
+        await conn.beginTransaction();
+        await conn.release();
     }
 
     protected async _commit(): Promise<void> {
-        await this._execute("COMMIT");
+        const conn = await this._get_connection();
+        await conn.commit();
+        await conn.release();
     }
 
     protected async _rollback(): Promise<void> {
-        await this._execute("ROLLBACK");
+        const conn = await this._get_connection();
+        await conn.rollback();
+        await conn.release();
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  HEALTH CHECK                                                           */
+    /* ---------------------------------------------------------------------- */
 
     protected async _test_connection(): Promise<boolean> {
         const row = await this._fetchone<{ ok: number }>("SELECT 1 AS ok");

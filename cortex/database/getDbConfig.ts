@@ -3,7 +3,6 @@ import { makeConfigKey } from './types';
 import {
     getGlobalEnv,
     getPrefixedEnv,
-    getEnvBool,
     getPoolSettings,
 } from '../settings/get_settings';
 

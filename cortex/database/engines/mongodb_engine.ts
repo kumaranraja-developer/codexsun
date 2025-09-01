@@ -1,13 +1,14 @@
 // cortex/database/engines/mongodb_engine.ts
-import { BaseEngine, MaybePromise} from "../Engine";
-import type {NetworkDBConfig} from "../types";
-import {MongoClient, Db} from "mongodb";
-import {queryAdapter, rowsAdapter} from "../queryAdapter";
+import { BaseEngine, MaybePromise } from "../Engine";
+import type { NetworkDBConfig } from "../types";
+import { MongoClient, Db } from "mongodb";
+import { queryAdapter, rowsAdapter } from "../queryAdapter";
 
 export class MongodbEngine extends BaseEngine {
     protected _get_connection(): MaybePromise<unknown> {
         throw new Error("Method not implemented.");
     }
+
     private cfg: NetworkDBConfig;
     private client: MongoClient | null = null;
     private db: Db | null = null;
@@ -16,6 +17,10 @@ export class MongodbEngine extends BaseEngine {
         super({ profile: cfg.profile, driver: "mongodb", cfgKey: cfg.cfgKey });
         this.cfg = cfg;
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  CONNECTION HANDLING                                                    */
+    /* ---------------------------------------------------------------------- */
 
     protected async _connect(): Promise<void> {
         if (this.client) return;
@@ -27,7 +32,7 @@ export class MongodbEngine extends BaseEngine {
         this.client = new MongoClient(uri, {
             connectTimeoutMS: this.cfg.pool?.acquireTimeoutMillis ?? 15000,
             maxPoolSize: this.cfg.pool?.max ?? 10,
-            ssl: this.cfg.ssl === true || this.cfg.ssl === "require",
+            ssl: this.cfg.ssl === true || this.cfg.ssl === "require" ? true : false, // ✅ normalize
         });
 
         await this.client.connect();
@@ -43,10 +48,17 @@ export class MongodbEngine extends BaseEngine {
     }
 
     private _getCollectionFromSql(sql: string): string {
-        const match = sql.match(/from\s+(\w+)/i) || sql.match(/into\s+(\w+)/i) || sql.match(/update\s+(\w+)/i);
+        const match =
+            sql.match(/from\s+(\w+)/i) ||
+            sql.match(/into\s+(\w+)/i) ||
+            sql.match(/update\s+(\w+)/i);
         if (!match) throw new Error(`Could not extract collection from SQL: ${sql}`);
         return match[1];
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  QUERY HELPERS                                                          */
+    /* ---------------------------------------------------------------------- */
 
     protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
         const result = await this._execute(sql, params);
@@ -68,7 +80,8 @@ export class MongodbEngine extends BaseEngine {
         // SELECT
         if (/^\s*select/i.test(normSql)) {
             const rows = await coll.find(normParams || {}).toArray();
-            return { rows: rowsAdapter("mongodb", rows), rowCount: rows.length };
+            const normRows = rowsAdapter("mongodb", rows);
+            return { rows: normRows, rowCount: normRows.length };
         }
 
         // INSERT
@@ -116,12 +129,20 @@ export class MongodbEngine extends BaseEngine {
         return results;
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  TRANSACTIONS                                                           */
+    /* ---------------------------------------------------------------------- */
+
     protected async _begin(): Promise<void> {
         // MongoDB transactions require replica sets → optional
     }
 
     protected async _commit(): Promise<void> {}
     protected async _rollback(): Promise<void> {}
+
+    /* ---------------------------------------------------------------------- */
+    /*  HEALTH CHECK                                                           */
+    /* ---------------------------------------------------------------------- */
 
     protected async _test_connection(): Promise<boolean> {
         if (!this.client) return false;

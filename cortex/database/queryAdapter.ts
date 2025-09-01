@@ -1,13 +1,26 @@
 // cortex/database/queryAdapter.ts
+
+/**
+ * Supported database drivers
+ */
 type Driver = "postgres" | "mariadb" | "sqlite" | "mysql" | "mongodb";
 
-/** Convert ? placeholders to $1, $2... for Postgres */
+/* -------------------------------------------------------------------------- */
+/*  PLACEHOLDER HELPERS                                                       */
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Convert `?` placeholders → `$1, $2...` for Postgres
+ */
 export function toPgPlaceholders(sql: string): string {
     let i = 0;
     return sql.replace(/\?/g, () => `$${++i}`);
 }
 
-/** Convert $n placeholders back to ? (for MariaDB/SQLite safety) */
+/**
+ * Convert `$n` placeholders → `?` (for MariaDB / SQLite safety)
+ */
 export function toQMarkPlaceholders(sql: string): string {
     if (/\$\d+/.test(sql)) {
         return sql.replace(/\$\d+/g, "?");
@@ -15,7 +28,15 @@ export function toQMarkPlaceholders(sql: string): string {
     return sql;
 }
 
-/** Format values per driver (dates, nulls, JSON, bools, buffers, arrays, etc.) */
+/* -------------------------------------------------------------------------- */
+/*  VALUE NORMALIZATION                                                       */
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Format values per driver
+ * - Handles dates, booleans, buffers, arrays, objects, nulls
+ */
 export function formatValue(driver: Driver, v: any): any {
     // undefined / null / string "null"
     if (v === undefined || v === null || v === "null") return null;
@@ -23,35 +44,19 @@ export function formatValue(driver: Driver, v: any): any {
     // Boolean handling
     if (typeof v === "boolean") {
         if (driver === "postgres") return v;   // native boolean
-        return v ? 1 : 0;                      // mariadb + sqlite expect int
+        return v ? 1 : 0;                      // others (mariadb/sqlite) expect int
     }
 
     // Dates
     if (v instanceof Date) {
-        if (driver === "mariadb") {
-            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
-            return v.toISOString()
-                .replace("T", " ")
-                .replace("Z", "")
-                .replace(/\.\d+$/, ""); // strip .000
-        }
+        const iso = v.toISOString()
+            .replace("T", " ")
+            .replace("Z", "")
+            .replace(/\.\d+$/, ""); // strip .000
 
-        if (driver === "mysql") {
-            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
-            return v.toISOString()
-                .replace("T", " ")
-                .replace("Z", "")
-                .replace(/\.\d+$/, ""); // strip .000
+        if (driver === "mariadb" || driver === "mysql" || driver === "mongodb") {
+            return iso; // "YYYY-MM-DD HH:MM:SS"
         }
-
-        if (driver === "mongodb") {
-            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
-            return v.toISOString()
-                .replace("T", " ")
-                .replace("Z", "")
-                .replace(/\.\d+$/, ""); // strip .000
-        }
-
         return v.toISOString(); // Postgres + SQLite accept ISO
     }
 
@@ -79,22 +84,25 @@ export function formatValue(driver: Driver, v: any): any {
         }
     }
 
-    // Strings → MariaDB datetime fix
-    if (typeof v === "string" && driver === "mariadb" && /\d{4}-\d{2}-\d{2}T/.test(v)) {
-        return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
+    // Strings → fix datetime format for MariaDB/MySQL
+    if (typeof v === "string" && (driver === "mariadb" || driver === "mysql")) {
+        if (/\d{4}-\d{2}-\d{2}T/.test(v)) {
+            return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
+        }
     }
-
-    // Strings → MariaDB datetime fix
-    if (typeof v === "string" && driver === "mysql" && /\d{4}-\d{2}-\d{2}T/.test(v)) {
-        return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
-    }
-
 
     // Fallback: numbers & primitives
     return v;
 }
 
-/** Normalize params: always return an array */
+/* -------------------------------------------------------------------------- */
+/*  PARAM NORMALIZATION                                                       */
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Always return params as an array of formatted values
+ */
 export function normalizeParams(driver: Driver, params?: unknown): unknown[] {
     if (params === undefined) return [];
     if (params === null) return [null];
@@ -106,7 +114,14 @@ export function normalizeParams(driver: Driver, params?: unknown): unknown[] {
     return [formatValue(driver, params)];
 }
 
-/** Adapt SQL + params to the target driver */
+/* -------------------------------------------------------------------------- */
+/*  QUERY ADAPTER                                                             */
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Adapt SQL + params to the target driver
+ */
 export function queryAdapter(
     driver: Driver,
     sql: string,
@@ -117,18 +132,38 @@ export function queryAdapter(
     if (driver === "postgres") {
         if (/\?/.test(sql)) outSql = toPgPlaceholders(sql);
     } else {
-        // MariaDB + SQLite prefer ?
+        // MariaDB + MySQL + SQLite + Mongo prefer "?"
         outSql = toQMarkPlaceholders(sql);
     }
 
     const outParams = normalizeParams(driver, params);
-    return { sql: outSql, params: outParams };
+    return {sql: outSql, params: outParams};
 }
 
-/** ✅ Normalize rows across drivers (always array of plain objects) */
+/* -------------------------------------------------------------------------- */
+/*  ROW ADAPTER                                                               */
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Normalize rows across drivers
+ * Always return an array of plain objects
+ */
 export function rowsAdapter(driver: Driver, rows: any): any[] {
     if (!rows) return [];
+
+    const Driver = driver.toLowerCase();
+    if (!["postgres", "mariadb", "sqlite", "mysql", "mongodb"].includes(Driver)) {
+        throw new Error(`Unsupported driver for rowsAdapter(): ${driver}`);
+    }
+
+    // Standard array of rows
     if (Array.isArray(rows)) return rows;
+
+    // Some drivers (SQLite, Mongo) may return `{ rows: [...] }`
+    if (rows.rows && Array.isArray(rows.rows)) {
+        return rows.rows;
+    }
 
     // MariaDB sometimes returns objects with metadata
     if (typeof rows === "object" && rows.constructor === Object) {

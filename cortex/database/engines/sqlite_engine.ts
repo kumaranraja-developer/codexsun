@@ -1,231 +1,135 @@
 // cortex/database/engines/sqlite_engine.ts
-import Database from 'better-sqlite3';
-import type { SQLiteDBConfig } from '../types';
-import type { Engine } from '../Engine';
-import { queryAdapter, rowsAdapter } from '../queryAdapter'; // shared helpers
+import { BaseEngine } from "../Engine";
+import type { NetworkDBConfig } from "../types";
+import sqlite3 from "sqlite3";
+import { open, Database } from "sqlite";
+import { queryAdapter, rowsAdapter } from "../queryAdapter";
 
-function analyzePlaceholders(sql: string) {
-    const qCount = (sql.match(/\?/g) || []).length;
-    const hasNamed = /[@:$][A-Za-z_][A-Za-z0-9_]*/.test(sql);
-    return { qCount, hasNamed };
-}
+export class SqliteEngine extends BaseEngine {
+    private cfg: NetworkDBConfig;
+    private db: Database | null = null;
 
-type CallSig =
-    | { kind: 'none' }
-    | { kind: 'scalar'; value: unknown }
-    | { kind: 'object'; value: Record<string, unknown> }
-    | { kind: 'spread'; values: unknown[] };
-
-function normalizeForBetterSqlite(sql: string, params: unknown): CallSig {
-    const { qCount, hasNamed } = analyzePlaceholders(sql);
-    if (qCount === 0 && !hasNamed) return { kind: 'none' };
-
-    if (hasNamed) {
-        if (params && typeof params === 'object' && !Array.isArray(params)) {
-            return { kind: 'object', value: params as Record<string, unknown> };
-        }
-        return { kind: 'object', value: {} };
-    }
-
-    if (qCount === 1) {
-        if (Array.isArray(params)) return { kind: 'scalar', value: (params as unknown[])[0] };
-        if (params && typeof params === 'object') return { kind: 'none' };
-        return { kind: 'scalar', value: params };
-    }
-
-    if (Array.isArray(params)) return { kind: 'spread', values: params as unknown[] };
-    if (params && typeof params === 'object') return { kind: 'spread', values: Object.values(params as any) };
-    return { kind: 'spread', values: [params] };
-}
-
-export class SQLiteEngine implements Engine {
-    readonly profile: string;
-    readonly driver: 'sqlite' = 'sqlite';
-    readonly cfgKey: string;
-
-    private cfg: SQLiteDBConfig;
-    private db: Database.Database | null = null;
-
-    constructor(cfg: SQLiteDBConfig) {
+    constructor(cfg: NetworkDBConfig) {
+        super({ profile: cfg.profile, driver: "sqlite", cfgKey: cfg.cfgKey });
         this.cfg = cfg;
-        this.profile = cfg.profile;
-        this.cfgKey = cfg.cfgKey;
     }
 
-    async connect(): Promise<void> {
+    /* ---------------------------------------------------------------------- */
+    /*  CONNECTION HANDLING                                                    */
+    /* ---------------------------------------------------------------------- */
+
+    protected async _connect(): Promise<void> {
         if (this.db) return;
-        this.db = new Database(this.cfg.file, { fileMustExist: false });
+        this.db = await open({
+            filename: this.cfg.database ?? ":memory:",
+            driver: sqlite3.Database,
+        });
     }
 
-    async close(): Promise<void> {
-        if (!this.db) return;
-        this.db.close();
-        this.db = null;
-    }
-
-    async testConnection(): Promise<boolean> {
-        const db = await this._getDb();
-        const row = db.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;
-        return !!row && row.ok === 1;
-    }
-
-    async getConnection(): Promise<unknown> {
-        return this._getDb();
-    }
-
-    async fetchOne<T = any>(sql: string, params?: unknown): Promise<T | null> {
-        const { sql: normSql, params: normParams } = queryAdapter("sqlite", sql, params);
-        const db = await this._getDb();
-        const stmt = db.prepare(normSql);
-        try {
-            const call = normalizeForBetterSqlite(normSql, normParams);
-            const row =
-                call.kind === 'none'   ? stmt.get()
-                    : call.kind === 'object' ? stmt.get(call.value)
-                        : call.kind === 'scalar' ? stmt.get(call.value)
-                            : stmt.get(...call.values);
-
-            const rows = rowsAdapter("sqlite", (row ? [row] : []) as Record<string, any>[]);
-            return (rows[0] ?? null) as T | null;
-        } catch (err: any) {
-            const preview = normParams && typeof normParams === 'object' ? JSON.stringify(normParams) : String(normParams);
-            throw new RangeError(`sqlite fetchOne failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`);
+    protected async _close(): Promise<void> {
+        if (this.db) {
+            await this.db.close();
+            this.db = null;
         }
     }
 
-    async fetchAll<T = any>(sql: string, params?: unknown): Promise<T[]> {
-        const { sql: normSql, params: normParams } = queryAdapter("sqlite", sql, params);
-        const db = await this._getDb();
-        const stmt = db.prepare(normSql);
-        try {
-            const call = normalizeForBetterSqlite(normSql, normParams);
-            const rows =
-                call.kind === 'none'   ? stmt.all()
-                    : call.kind === 'object' ? stmt.all(call.value)
-                        : call.kind === 'scalar' ? stmt.all(call.value)
-                            : stmt.all(...call.values);
-
-            return rowsAdapter("sqlite", (rows ?? []) as Record<string, any>[]) as T[];
-        } catch (err: any) {
-            const preview = normParams && typeof normParams === 'object' ? JSON.stringify(normParams) : String(normParams);
-            throw new RangeError(`sqlite fetchAll failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`);
-        }
+    protected async _get_connection(): Promise<Database> {
+        if (!this.db) await this._connect();
+        return this.db!;
     }
 
-    async execute(sql: string, params?: unknown): Promise<any> {
-        const { sql: normSql, params: normParams } = queryAdapter("sqlite", sql, params);
-        const db = await this._getDb();
-        const stmt = db.prepare(normSql);
+    /* ---------------------------------------------------------------------- */
+    /*  QUERY HELPERS                                                          */
+    /* ---------------------------------------------------------------------- */
 
-        try {
-            const call = normalizeForBetterSqlite(normSql, normParams);
-
-            // 🔑 Detect SELECT queries
-            if (/^\s*select/i.test(normSql)) {
-                const rows =
-                    call.kind === 'none'   ? stmt.all()
-                        : call.kind === 'object' ? stmt.all(call.value)
-                            : call.kind === 'scalar' ? stmt.all(call.value)
-                                : stmt.all(...call.values);
-
-                const adapted = rowsAdapter("sqlite", (rows ?? []) as Record<string, any>[]);
-                return { rows: adapted, rowCount: adapted.length };
-            }
-
-            // Non-SELECT → run()
-            const info =
-                call.kind === 'none'   ? stmt.run()
-                    : call.kind === 'object' ? stmt.run(call.value)
-                        : call.kind === 'scalar' ? stmt.run(call.value)
-                            : stmt.run(...call.values);
-
-            return {
-                rows: [],
-                rowCount: typeof (info as any)?.changes === 'number' ? info.changes : 0,
-                changes: (info as any)?.changes ?? 0,
-                lastID: info?.lastInsertRowid !== undefined ? Number(info.lastInsertRowid) : undefined,
-                insertId: info?.lastInsertRowid !== undefined ? Number(info.lastInsertRowid) : undefined, // alias
-            };
-        } catch (err: any) {
-            const preview = normParams && typeof normParams === 'object'
-                ? JSON.stringify(normParams)
-                : String(normParams);
-            throw new RangeError(
-                `sqlite execute failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`
-            );
-        }
+    protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
+        const result = await this._execute(sql, params);
+        return (result.rows?.[0] ?? null) as T | null;
     }
 
-    async executeMany(sql: string, paramSets: unknown[]): Promise<any> {
+    protected async _fetchall<T = any>(sql: string, params?: unknown): Promise<T[]> {
+        const result = await this._execute(sql, params);
+        return (result.rows ?? []) as T[];
+    }
+
+    protected async _execute(sql: string, params?: unknown): Promise<any> {
+        const { sql: normSql, params: normParams } = queryAdapter("sqlite", sql, params);
+        const db = await this._get_connection();
+
+        // Detect SELECT
+        if (/^\s*select/i.test(normSql)) {
+            const rows = await db.all(normSql, normParams as any[]);
+            const normRows = rowsAdapter("sqlite", rows);
+            return { rows: normRows, rowCount: normRows.length };
+        }
+
+        // Non-SELECT (INSERT/UPDATE/DELETE)
+        const res = await db.run(normSql, normParams as any[]);
+        return {
+            rows: [],
+            rowCount: res.changes ?? 0,
+            affectedRows: res.changes ?? 0,
+            insertId: res.lastID,
+            lastID: res.lastID,
+        };
+    }
+
+    protected async _executemany(sql: string, paramSets: unknown[]): Promise<any> {
         const { sql: normSql } = queryAdapter("sqlite", sql);
-        const db = await this._getDb();
-        const stmt = db.prepare(normSql);
+        const db = await this._get_connection();
 
-        // 🔑 Detect SELECT queries
         if (/^\s*select/i.test(normSql)) {
             const allRows: any[] = [];
-            for (const raw of paramSets) {
-                const { params: normParams } = queryAdapter("sqlite", sql, raw);
-                const call = normalizeForBetterSqlite(normSql, normParams);
-                const rows =
-                    call.kind === 'none'   ? stmt.all()
-                        : call.kind === 'object' ? stmt.all(call.value)
-                            : call.kind === 'scalar' ? stmt.all(call.value)
-                                : stmt.all(...call.values);
+            for (const p of paramSets) {
+                const { params: normParams } = queryAdapter("sqlite", sql, p);
+                const rows = await db.all(normSql, normParams as any[]);
                 allRows.push(...rows);
             }
-            const adapted = rowsAdapter("sqlite", allRows as Record<string, any>[]);
-            return { rows: adapted, rowCount: adapted.length };
+            const normRows = rowsAdapter("sqlite", allRows);
+            return { rows: normRows, rowCount: normRows.length };
         }
 
-        // Non-SELECT → batch run() inside a transaction
+        // Non-SELECT
         let total = 0;
-        let lastID: number | undefined = undefined;
-
-        const tx = db.transaction((sets: unknown[]) => {
-            for (const raw of sets) {
-                const { params: normParams } = queryAdapter("sqlite", sql, raw);
-                const call = normalizeForBetterSqlite(normSql, normParams);
-                const info =
-                    call.kind === 'none'   ? stmt.run()
-                        : call.kind === 'object' ? stmt.run(call.value)
-                            : call.kind === 'scalar' ? stmt.run(call.value)
-                                : stmt.run(...call.values);
-                total += info?.changes ?? 0;
-                if ((info as any)?.lastInsertRowid !== undefined) {
-                    lastID = Number((info as any).lastInsertRowid);
-                }
-            }
-        });
-
-        try {
-            tx(paramSets);
-        } catch (err: any) {
-            const sample = paramSets.length
-                ? (typeof paramSets[0] === 'object' ? JSON.stringify(paramSets[0]) : String(paramSets[0]))
-                : '[]';
-            throw new RangeError(
-                `sqlite executeMany failed: ${err?.message || err}\nsql: ${normSql}\nfirst param: ${sample}`
-            );
+        let lastID: number | undefined;
+        for (const p of paramSets) {
+            const { params: normParams } = queryAdapter("sqlite", sql, p);
+            const res = await db.run(normSql, normParams as any[]);
+            total += res.changes ?? 0;
+            lastID = res.lastID;
         }
 
         return {
             rows: [],
             rowCount: total,
-            changes: total,
+            affectedRows: total,
             lastID,
-            insertId: lastID, // alias
+            insertId: lastID,
         };
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  TRANSACTIONS                                                           */
+    /* ---------------------------------------------------------------------- */
 
+    protected async _begin(): Promise<void> {
+        await this._execute("BEGIN");
+    }
 
-    async begin(): Promise<void>    { const db = await this._getDb(); db.prepare('BEGIN').run(); }
-    async commit(): Promise<void>   { const db = await this._getDb(); db.prepare('COMMIT').run(); }
-    async rollback(): Promise<void> { const db = await this._getDb(); db.prepare('ROLLBACK').run(); }
+    protected async _commit(): Promise<void> {
+        await this._execute("COMMIT");
+    }
 
-    private async _getDb(): Promise<Database.Database> {
-        if (!this.db) await this.connect();
-        return this.db!;
+    protected async _rollback(): Promise<void> {
+        await this._execute("ROLLBACK");
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /*  HEALTH CHECK                                                           */
+    /* ---------------------------------------------------------------------- */
+
+    protected async _test_connection(): Promise<boolean> {
+        const row = await this._fetchone<{ ok: number }>("SELECT 1 AS ok");
+        return !!row && row.ok === 1;
     }
 }

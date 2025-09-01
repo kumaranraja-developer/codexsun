@@ -1,3 +1,5 @@
+// cortex/database/engines/mysql_engine.ts
+
 import { BaseEngine } from "../Engine";
 import type { NetworkDBConfig } from "../types";
 import mysql, { Pool, PoolConnection } from "mysql2/promise";
@@ -11,6 +13,10 @@ export class MysqlEngine extends BaseEngine {
         super({ profile: cfg.profile, driver: "mysql", cfgKey: cfg.cfgKey });
         this.cfg = cfg;
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  CONNECTION HANDLING                                                    */
+    /* ---------------------------------------------------------------------- */
 
     protected async _connect(): Promise<void> {
         if (this.pool) return;
@@ -42,6 +48,10 @@ export class MysqlEngine extends BaseEngine {
         return this.pool!.getConnection();
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  QUERY HELPERS                                                          */
+    /* ---------------------------------------------------------------------- */
+
     protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
         const result = await this._execute(sql, params);
         return (result.rows?.[0] ?? null) as T | null;
@@ -58,13 +68,13 @@ export class MysqlEngine extends BaseEngine {
         try {
             const [rows] = await conn.query(normSql, normParams as any);
 
+            // SELECT → array of rows
             if (/^\s*select/i.test(normSql)) {
-                // SELECT → rows is array
-                const normRows = rowsAdapter("mysql", Array.isArray(rows) ? rows : []);
+                const normRows = rowsAdapter("mysql", rows);
                 return { rows: normRows, rowCount: normRows.length };
             }
 
-            // Non-SELECT → rows is OkPacket
+            // Non-SELECT → OkPacket
             const result: any = rows;
             const insertId = result?.insertId !== undefined ? Number(result.insertId) : undefined;
 
@@ -84,20 +94,19 @@ export class MysqlEngine extends BaseEngine {
         const { sql: normSql } = queryAdapter("mysql", sql);
         const conn = await this._get_connection();
         try {
+            // SELECT batch
             if (/^\s*select/i.test(normSql)) {
                 const allRows: any[] = [];
                 for (const p of paramSets) {
                     const { params: normParams } = queryAdapter("mysql", sql, p);
                     const [rows] = await conn.query(normSql, normParams as any);
-                    if (Array.isArray(rows)) {
-                        allRows.push(...rows);
-                    }
+                    if (Array.isArray(rows)) allRows.push(...rows);
                 }
                 const normRows = rowsAdapter("mysql", allRows);
                 return { rows: normRows, rowCount: normRows.length };
             }
 
-            // Non-SELECT
+            // Non-SELECT batch
             let total = 0;
             const insertIds: number[] = [];
             for (const p of paramSets) {
@@ -121,6 +130,10 @@ export class MysqlEngine extends BaseEngine {
         }
     }
 
+    /* ---------------------------------------------------------------------- */
+    /*  TRANSACTIONS                                                           */
+    /* ---------------------------------------------------------------------- */
+
     protected async _begin(): Promise<void> {
         const conn = await this._get_connection();
         await conn.beginTransaction();
@@ -138,6 +151,10 @@ export class MysqlEngine extends BaseEngine {
         await conn.rollback();
         conn.release();
     }
+
+    /* ---------------------------------------------------------------------- */
+    /*  HEALTH CHECK                                                           */
+    /* ---------------------------------------------------------------------- */
 
     protected async _test_connection(): Promise<boolean> {
         const row = await this._fetchone<{ ok: number }>("SELECT 1 AS ok");
