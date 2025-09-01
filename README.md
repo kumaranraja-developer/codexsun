@@ -9,7 +9,7 @@ Minimal monorepo with a single starter app: **cxsun**.
 
 ## Install
 From the repo root:
-```bash
+```
 pnpm install
 ```
 
