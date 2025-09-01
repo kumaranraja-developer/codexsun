@@ -1,0 +1,218 @@
+{
+  "theme": "system",
+  "recordsPerPage": 60,
+  "user": {
+    "name": "Codexsun",
+    "email": "aaran@gmail.com",
+    "avatar": "/avatars/shadcn.jpg"
+  },
+
+  "logo": {
+    "path": "/assets/svg/codexsun_logo.svg",
+    "position": "center",
+    "height": "20",
+    "font_size": "2",
+    "mode":"logo",
+    "company_name": "",
+    "color": "",
+    "padding": "2"
+  },
+
+  "sidemenu": {
+    "main": [
+      {
+        "title": "Dashboard",
+        "icon": "LayoutDashboard",
+        "url": ""
+      },
+      {
+        "title": "Tenants",
+        "currentComponent": "tenants",
+        "icon": "LayoutDashboard",
+        "url": "tenants"
+      },
+      {
+        "title": "Invoice",
+        "icon": "LucideNotepadText",
+        "url": "#",
+        "items": [
+          {
+            "title": "Sales",
+            "currentComponent": "sales",
+            "url": "sales"
+          },
+          {
+            "title": "Purchase",
+            "currentComponent": "purchase",
+            "url": "purchase"
+          },
+          {
+            "title": "Receipt",
+            "currentComponent": "receipt",
+            "url": "receipt"
+          },
+          {
+            "title": "Payment",
+            "currentComponent": "payment",
+            "url": "payment"
+          }
+        ]
+      },
+      {
+        "title": "Transactions",
+        "icon": "BadgeDollarSignIcon",
+        "url": "#",
+        "items": [
+          {
+            "title": "Account Books",
+            "currentComponent": "accountbook",
+            "url": "accountbook"
+          }
+        ]
+      },
+      {
+        "title": "Books",
+        "icon": "NotebookIcon",
+        "url": "#",
+        "items": [
+          {
+            "title": "Account Heads",
+            "currentComponent": "accounthead",
+            "url": "accounthead"
+          },
+          {
+            "title": "Ledger Groups",
+            "currentComponent": "ledgergroup",
+            "url": "ledgergroup"
+          },
+          {
+            "title": "Ledgers",
+            "currentComponent": "ledger",
+            "url": "ledger"
+          }
+        ]
+      },
+      {
+        "title": "Master",
+        "icon": "Settings",
+        "url": "#",
+        "items": [
+          {
+            "title": "Contacts",
+            "currentComponent": "contacts",
+            "url": "contacts"
+          },
+          {
+            "title": "Products",
+            "currentComponent": "products",
+            "url": "products"
+          },
+          {
+            "title": "Company",
+            "currentComponent": "company",
+            "url": "company"
+          },
+          {
+            "title": "Orders",
+            "currentComponent": "orders",
+            "url": "orders"
+          },
+          {
+            "title": "Styles",
+            "currentComponent": "styles",
+            "url": "styles"
+          }
+        ]
+      },
+      {
+        "title": "Common",
+        "icon": "Settings",
+        "url": "#",
+        "items": [
+          {
+            "title": "City",
+            "currentComponent": "city",
+            "url": "city"
+          },
+          {
+            "title": "State",
+            "currentComponent": "state",
+            "url": "state"
+          },
+          {
+            "title": "Pin codes",
+            "currentComponent": "pincode",
+            "url": "pincode"
+          },
+          {
+            "title": "Countries",
+            "currentComponent": "country",
+            "url": "country"
+          },
+          {
+            "title": "Hsn codes",
+            "currentComponent": "hsncode",
+            "url": "hsncode"
+          },
+          {
+            "title": "Units",
+            "currentComponent": "units",
+            "url": "units"
+          },
+          {
+            "title": "Categories",
+            "currentComponent": "category",
+            "url": "category"
+          },
+          {
+            "title": "Colours",
+            "currentComponent": "colours",
+            "url": "colours"
+          },
+          {
+            "title": "Sizes",
+            "currentComponent": "sizes",
+            "url": "sizes"
+          },
+          {
+            "title": "Departments",
+            "currentComponent": "departments",
+            "url": "departments"
+          },
+          {
+            "title": "Bank",
+            "currentComponent": "bank",
+            "url": "bank"
+          },
+          {
+            "title": "Receipt Types",
+            "currentComponent": "receipttype",
+            "url": "receipttype"
+          },
+          {
+            "title": "Despatches",
+            "currentComponent": "despatches",
+            "url": "despatches"
+          },
+          {
+            "title": "Gst Percents",
+            "currentComponent": "gstpercent",
+            "url": "gstpercent"
+          },
+          {
+            "title": "Contact Types",
+            "currentComponent": "contacttype",
+            "url": "contacttype"
+          },
+          {
+            "title": "Payment Modes",
+            "currentComponent": "paymentmode",
+            "url": "paymentmode"
+          }
+        ]
+      }
+    ],
+    "help": {},
+    "document": {}
+  }
+}

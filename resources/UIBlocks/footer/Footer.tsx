@@ -57,11 +57,11 @@ const Footer: React.FC<FooterProps> = ({
   };
 
   return (
-    <footer className="text-sm mt-5 cursor-default">
+    <footer className="text-sm mt-5 cursor-default bg-footer text-footer-foreground">
       <div className="grid grid-cols-1 px-[5%] sm:grid-cols-2 lg:grid-cols-4 gap-6 py-10">
         {/* About */}
         <div>
-          <h5 className="font-bold mb-2">About Us</h5>
+          <h5 className="font-bold mb-2 text-primary">About Us</h5>
           <ul className="space-y-1">
             {aboutLinks.map((link, idx) => (
               <li key={idx}>
@@ -75,7 +75,7 @@ const Footer: React.FC<FooterProps> = ({
 
         {/* Services */}
         <div>
-          <h5 className="font-bold mb-2">Services</h5>
+          <h5 className="font-bold text-primary mb-2">Services</h5>
           <ul className="space-y-1">
             {servicesLinks.map((link, idx) => (
               <li key={idx}>
@@ -89,7 +89,7 @@ const Footer: React.FC<FooterProps> = ({
 
         {/* Consumer Policy */}
         <div>
-          <h5 className="font-bold mb-2">Consumer Policy</h5>
+          <h5 className="font-bold text-primary mb-2">Consumer Policy</h5>
           <ul className="space-y-1">
             {policyLinks.map((link, idx) => (
               <li key={idx}>

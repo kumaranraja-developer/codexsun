@@ -33,7 +33,7 @@ const PortfolioFooter: React.FC<PortfolioFooterProps> = ({
   copyright,
 }) => {
   return (
-    <footer className="bg-[#0d1b3d] text-white pb-5 pt-16 px-6">
+    <footer className="bg-footer text-footer-foreground pb-5 pt-16 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left Grid: Logo + Newsletter */}
         {/* Left Grid: Logo + Newsletter */}
@@ -51,7 +51,7 @@ const PortfolioFooter: React.FC<PortfolioFooterProps> = ({
             />
             <button
               type="submit"
-              className="bg-gradient-to-r from-primary to-primary/30 hover:to-primary px-6 py-3 m-1 cursor-pointer text-white font-medium rounded-r-full"
+              className="bg-primary px-6 py-3 m-1 cursor-pointer text-primary-foreground font-medium rounded-r-full"
             >
               {newsletterButton}
             </button>

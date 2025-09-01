@@ -1,6 +1,6 @@
 import { useState } from "react";
 import GlobalSearch from "../../components/input/search-box";
-import Timeline from "../../components/timeline/timeline";
+import Timeline from "../../UIBlocks/timeline/timeline";
 import { useNavigate, useParams } from "react-router-dom";
 import { LinkAgroBlogs } from "../../../sites/linkagro/src/pages/Blog";
 

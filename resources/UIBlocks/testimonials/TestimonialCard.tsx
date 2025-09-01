@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import ImageButton from "../../components/button/ImageBtn";
+import { Heading } from "lucide-react";
 
 type Testimonial = {
   id: number;
@@ -11,14 +12,16 @@ type Testimonial = {
 
 type TestimonialCarouselProps = {
   testimonials: Testimonial[];
-  autoSlide?: boolean;       // enable/disable auto-slide
+  autoSlide?: boolean; // enable/disable auto-slide
   autoSlideInterval?: number; // interval in ms
+  heading: string;
 };
 
 export default function TestimonialCarousel({
   testimonials,
   autoSlide = false,
   autoSlideInterval = 6000, // default: 3s
+  heading,
 }: TestimonialCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [numVisible] = useState(1);
@@ -72,7 +75,11 @@ export default function TestimonialCarousel({
   };
 
   return (
-    <div className="w-full md:w-[60%] mx-auto p-6 relative">
+    <div className="w-full md:w-[60%] mx-auto relative">
+      <h1 className="text-2xl md:text-4xl text-center font-bold pb-10">
+        {heading}
+      </h1>
+
       <div
         className="overflow-hidden"
         onTouchStart={handleTouchStart}
@@ -118,19 +125,20 @@ export default function TestimonialCarousel({
           ))}
         </div>
       </div>
-
-      {/* Controls (hidden on mobile) */}
-      <div className="hidden md:block">
-        <ImageButton
-          icon="left"
-          onClick={prevSlide}
-          className="absolute left-0 top-1/2 -translate-y-1/2 bg-primary/30 text-foreground p-2 !rounded-full"
-        />
-        <ImageButton
-          icon="right"
-          onClick={nextSlide}
-          className="absolute right-0 top-1/2 -translate-y-1/2 bg-primary/30 text-foreground p-2 !rounded-full"
-        />
+      <div className="flex justify-end pr-4">
+        {/* Controls (hidden on mobile) */}
+        <div className="flex gap-2 flex-nowrap">
+          <ImageButton
+            icon="left"
+            onClick={prevSlide}
+            className=" bg-primary/30 text-foreground p-2"
+          />
+          <ImageButton
+            icon="right"
+            onClick={nextSlide}
+            className="bg-primary/30 text-foreground p-2"
+          />
+        </div>
       </div>
     </div>
   );
