@@ -4,5 +4,5 @@ import tenantApi from "./core/tenant/Tenant.api";
 
 export async function registerApp(fastify: FastifyInstance) {
     // Register app modules
-    await fastify.register(tenantApi, { prefix: "/" });
+    await fastify.register(tenantApi, { prefix: "api/tenant" });
 }

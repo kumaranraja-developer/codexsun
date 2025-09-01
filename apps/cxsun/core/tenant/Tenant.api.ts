@@ -13,10 +13,10 @@ let tenants: Tenant[] = [
 
 export default async function tenantApi(fastify: FastifyInstance) {
     // List
-    fastify.get("/tenant", async () => tenants);
+    fastify.get("/", async () => tenants);
 
     // Get by ID
-    fastify.get("/tenant/:id", async (req, reply) => {
+    fastify.get("/:id", async (req, reply) => {
         const { id } = req.params as { id: string };
         const tenant = tenants.find((t) => t.id === Number(id));
         if (!tenant) return reply.code(404).send({ error: "Not found" });
@@ -24,7 +24,7 @@ export default async function tenantApi(fastify: FastifyInstance) {
     });
 
     // Create
-    fastify.post("/tenant", async (req, reply) => {
+    fastify.post("/", async (req, reply) => {
         const body = req.body as { name: string };
         const tenant: Tenant = { id: tenants.length + 1, name: body.name };
         tenants.push(tenant);
@@ -32,7 +32,7 @@ export default async function tenantApi(fastify: FastifyInstance) {
     });
 
     // Update
-    fastify.put("/tenant/:id", async (req, reply) => {
+    fastify.put("/:id", async (req, reply) => {
         const { id } = req.params as { id: string };
         const body = req.body as { name: string };
         const tenant = tenants.find((t) => t.id === Number(id));
@@ -42,7 +42,7 @@ export default async function tenantApi(fastify: FastifyInstance) {
     });
 
     // Delete
-    fastify.delete("/tenant/:id", async (req, reply) => {
+    fastify.delete("/:id", async (req, reply) => {
         const { id } = req.params as { id: string };
         tenants = tenants.filter((t) => t.id !== Number(id));
         return { success: true };
