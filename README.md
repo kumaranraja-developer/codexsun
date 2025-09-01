@@ -24,7 +24,7 @@ cp .env.example .env
 Check .env file for database connection details.
 From the repo root: 
 
->DB_DRIVER=postgresql | mariadb | sqlite \
+>DB_DRIVER=postgresql | mysql | mariadb | sqlite \
  DB_HOST=localhost \
  DB_PORT=5432 | 3606 \
  DB_USER=yourusername \
