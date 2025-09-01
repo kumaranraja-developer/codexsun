@@ -1,5 +1,5 @@
 // cortex/http/validators/tenant.ts
-import { v } from "../../../../cortex/carex/validator";
+import { v } from "../../../../../cortex/carex/validator";
 
 // Create
 export const TenantCreateSchema = v.object({

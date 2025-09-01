@@ -1,9 +1,9 @@
 // cortex/tests/test_tenant_controller.ts
 import assert from "node:assert/strict";
 import type { Request, Response } from "express";
-import * as TenantRepoMod from "./tenant.repo";
-import TenantController from "./tenant.controller";
-import { logger } from "../../../../cortex/utils/logger";
+import * as TenantRepoMod from "../code/tenant.repo";
+import TenantController from "../code/tenant.controller";
+import { logger } from "../../../../../cortex/utils/logger";
 
 // Minimal Response mock
 function mockRes() {

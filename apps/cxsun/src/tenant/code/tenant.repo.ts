@@ -1,5 +1,5 @@
-import { execute, getDriver } from "../../../../cortex/database/connection_manager";
-import { toPgPlaceholders, toQMarkPlaceholders } from "../../../../cortex/database/queryAdapter";
+import { execute, getDriver } from "../../../../../cortex/database/connection_manager";
+import { toPgPlaceholders, toQMarkPlaceholders } from "../../../../../cortex/database/queryAdapter";
 
 export type TenantRow = {
     id: number;
