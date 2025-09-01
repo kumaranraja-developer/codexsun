@@ -6,11 +6,13 @@ import 'dotenv/config';
 // import {smokePostgres} from "./test_smoke_postgres";
 // import {smokeSQLite} from "./test_smoke_sqlite";
 import {migrations} from "./test_migration";
+import {runUserSmokeTest} from "./test_smoke_user";
+import getDbConfig from "../database/getDbConfig";
 // import {migration_runner} from "./test_migration_runner";
 
-import { tenantControllerTests } from "../../apps/cxsun/core/tenant/test_tenant_controller";
-import { tenantValidatorTests } from "../../apps/cxsun/core/tenant/test_tenant_validator";
-import {tenantIntegrationTests} from "../../apps/cxsun/core/tenant/test_tenant_integration";
+// import { tenantControllerTests } from "../../apps/cxsun/core/tenant/test_tenant_controller";
+// import { tenantValidatorTests } from "../../apps/cxsun/core/tenant/test_tenant_validator";
+// import {tenantIntegrationTests} from "../../apps/cxsun/core/tenant/test_tenant_integration";
 
 async function main() {
 
@@ -23,7 +25,13 @@ async function main() {
 
     // await tenantControllerTests();
     // await tenantValidatorTests();
-    await tenantIntegrationTests();
+    // await tenantIntegrationTests();
+
+    const profile = "default";
+    const cfg = getDbConfig(profile); // or postgres, mysql, etc.
+    await runUserSmokeTest(profile);
+
+
 }
 
 main().catch((e) => {
