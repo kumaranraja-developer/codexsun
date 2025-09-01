@@ -17,5 +17,5 @@
        "@cortex/*": ["cortex/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"]
+  "include": ["**/*.ts", "**/*.tsx"],
 }

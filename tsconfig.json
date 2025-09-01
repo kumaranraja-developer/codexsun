@@ -6,5 +6,4 @@
     "types": ["node"]
   },
   "include": ["server.ts", "cortex/**/*.ts", "apps/**/*.ts"],
-  "jsx": "react-jsx"
 }

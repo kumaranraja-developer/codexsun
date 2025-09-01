@@ -8,8 +8,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react"
   },
-  "include": ["app.ts"],
-  "jsx": "react-jsx"
+  "include": ["app.ts","src", "vite.config.ts", "**/*.tsx"],
+  "types": ["vite/client"],
 }

@@ -18,8 +18,8 @@ import { AddressInfo } from "net";
         const host = process.env.HOST || "127.0.0.1";
         await app.listen({ port, host });
 
-        const addr = app.server.address() as AddressInfo;
-        app.log.info(`🚀 Server listening at http://${host}:${addr.port}`);
+        // const addr = app.server.address() as AddressInfo;
+        // app.log.info(`Server listening at http://${host}:${addr.port}`);
     } catch (err) {
         console.error("[ERROR] Fatal startup error", err);
         process.exit(1);

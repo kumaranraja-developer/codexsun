@@ -1,19 +1,23 @@
-import { useState } from "react";
+// apps/cxsun/src/App.tsx
+import { Link, Route, Routes, Navigate } from "react-router-dom";
+import TenantList from "../core/tenants/Tenant.list";
+import React from "react";
 
 export default function App() {
-    const [tenants] = useState<any[]>([]);
-
     return (
-        <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-            <h1>Codexsun</h1>
-            <h2>Tenants</h2>
-            <ul>
-                {tenants.map((t) => (
-                    <li key={t.id}>
-                        <code>{t.slug}</code> — {t.name}
-                    </li>
-                ))}
-            </ul>
-        </main>
+        <div style={{ padding: 16 }}>
+            <header style={{ marginBottom: 16 }}>
+                <nav style={{ display: "flex", gap: 12 }}>
+                    <Link to="/">Home</Link>
+                    <Link to="/tenants">Tenants</Link>
+                </nav>
+            </header>
+
+            <Routes>
+                <Route path="/" element={<div>Welcome 👋</div>} />
+                <Route path="/tenants" element={<TenantList />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </div>
     );
 }

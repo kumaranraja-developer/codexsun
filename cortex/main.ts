@@ -1,36 +1,46 @@
-// cortex/main.ts
+// cortex/server/main.ts
 import Fastify from "fastify";
-import { mountApps } from "./server/mount";
-import { join } from "node:path";
+import path from "node:path";
+import { fileExists, importAbs, listDirs } from "./server/mount";
 
 export async function bootApp() {
     const app = Fastify({ logger: true });
 
-    // mount apps (auto-discover, or use APP_LIST=cxsun,admin)
-    const apps = await mountApps(app);
+    // 1) discover apps: /apps/<app>/app.ts
+    const appsRoot = path.join(process.cwd(), "apps");
+    const appDirs = await listDirs(appsRoot);
+    const mounted: string[] = [];
 
-    // health/root
+    for (const name of appDirs) {
+        const entry = path.join(appsRoot, name, "app.ts");
+        if (!(await fileExists(entry))) {
+            app.log.warn({ app: name }, `skip: ${entry} missing`);
+            continue;
+        }
+        const mod = await importAbs(entry);
+        const plugin = mod.default;
+        if (typeof plugin !== "function") {
+            app.log.warn({ app: name }, "skip: default export is not a Fastify plugin");
+            continue;
+        }
+
+        // 👉 mount with NO prefix (your choice). If you want /api, wrap in a scope.
+        await app.register(plugin);
+        mounted.push(name);
+        app.log.info({ app: name }, "mounted");
+    }
+
+    // root health
     app.get("/", async () => ({
         name: "codexsun",
-        apps,
-        tips: apps.map((n) => `App '${n}' mounted under /api`),
+        apps: mounted,
     }));
 
-    // In production, serve the built frontend (optional, only if you want one-port prod)
-    if (process.env.NODE_ENV === "production") {
-        const fastifyStatic = (await import("@fastify/static")).default;
-        await app.register(fastifyStatic, {
-            root: join(process.cwd(), "apps", "cxsun", "dist"),
-            prefix: "/",
-        });
-        app.setNotFoundHandler((req, reply) => {
-            if (req.raw.url?.startsWith("/api")) {
-                reply.code(404).send({ error: "Not found" });
-            } else {
-                reply.sendFile("index.html");
-            }
-        });
-    }
+    // print routes for sanity
+    app.ready(() => {
+        app.log.info("\n=== ROUTES ===");
+        app.log.info(app.printRoutes());
+    });
 
     return app;
 }
