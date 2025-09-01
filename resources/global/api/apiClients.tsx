@@ -1,31 +1,29 @@
 import axios from 'axios';
 
-// const apiMethod = import.meta.env.VITE_API_METHOD || 'FAST_API';
-const appType = (import.meta.env.VITE_APP_TYPE || 'cxsun').toUpperCase();
+// Cast import.meta to any to bypass TypeScript error
+const env = (import.meta as any).env;
 
-// ✅ Dynamically access base URL and token from env
-const env = import.meta.env;
+const appType = (env.VITE_APP_TYPE || 'cxsun').toUpperCase();
+
 const apiMethod = env[`VITE_${appType}_API_METHOD`] || 'FAST_API';
-const baseURL = env[`VITE_${appType}_API_URL`] || env.VITE_API_URL;
+const baseURL = env[`VITE_${appType}_API_URL`] || "http://127.0.0.1:3000";
 const frappeToken = env[`VITE_${appType}_TOKEN`];
 
 const apiClient = axios.create({
   baseURL,
-  withCredentials: true,
+  withCredentials: false,
 });
 
 apiClient.interceptors.request.use(
   (config) => {
     if (apiMethod === 'FRAPPE') {
-      // ✅ Use dynamic Frappe token based on APP_TYPE
       if (frappeToken) {
         config.headers['Authorization'] = frappeToken;
         config.headers['Content-Type'] = 'application/json';
-      }else{
-          alert("Token Missing")
+      } else {
+        alert("Token Missing")
       }
     } else {
-      // ✅ FAST_API: Token from localStorage
       const token = localStorage.getItem('token');
       if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;

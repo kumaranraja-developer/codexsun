@@ -1,7 +1,7 @@
 // apps/cxsun/database/migrations/0001_tenants.table.ts
 import {defineTable} from "../../../../cortex/migration/Builder";
 
-export default defineTable("tenant", (table) => {
+export default defineTable("tenants", (table) => {
     table.id();
     table.string("slug").notnull().unique();
     table.string("name").notnull();

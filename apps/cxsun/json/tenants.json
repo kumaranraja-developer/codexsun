@@ -1,0 +1,66 @@
+{
+    "tenants": {
+        "table": {
+            "details": {
+                "title": "Invoice Details",
+                "fields": [
+                    {
+                        "key": "id",
+                        "label": "ID",
+                        "type": "textinput",
+                        "inTable": true,
+                        "isForm": false,
+                        "isPrint": true
+                    },
+                    {
+                        "key": "slug",
+                        "label": "Slug",
+                        "type": "textinput",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    },
+                    {
+                        "key": "name",
+                        "label": "Name",
+                        "type": "textinput",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    },
+                    {
+                        "key": "email",
+                        "label": "Email",
+                        "type": "textinput",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    },
+                    {
+                        "key": "created_at",
+                        "label": "Created",
+                        "type": "textinput",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    },
+                    {
+                        "key": "is_active",
+                        "label": "Active",
+                        "type": "switch",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    },
+                    {
+                        "key": "action",
+                        "label": "Action",
+                        "inTable": true,
+                        "isForm": true,
+                        "isPrint": false
+                    }
+                ]
+            }
+        }
+    }
+}

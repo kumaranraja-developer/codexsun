@@ -42,7 +42,7 @@ const HeroBanner: React.FC<HeroBannerProps> = ({
         {/* Button */}
         <a
           href={buttonLink}
-          className="inline-block bg-background text-foreground font-medium px-6 py-3 rounded-full shadow-md hover:shadow-lg hover:bg-hover transition"
+          className="inline-block bg-background text-foreground font-medium px-6 py-3 rounded-full shadow-md hover:shadow-lg hover:bg-hover transition hover:scale-105 duration-300"
         >
           {buttonText}
         </a>

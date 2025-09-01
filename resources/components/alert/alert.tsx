@@ -3,7 +3,7 @@ import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdErrorOutline, MdCancel, MdWarning } from "react-icons/md";
 
 interface AlertProps {
-  type: "success" | "update" | "delete" | "warning";
+  type: "success" | "update" | "delete" | "warning" | "failed";
   message: string;
   show: boolean;
   onClose?: () => void;
@@ -42,13 +42,17 @@ function Alert({ type, message, show, onClose }: AlertProps) {
       className: "bg-warning border-l-black text-white",
       icon: <MdWarning size={24} />,
     },
+    failed: {
+      className: "bg-delete border-l-black text-white",
+      icon: <MdErrorOutline size={24} />,
+    },
   };
-
-  const { className, icon } = config[type];
+  const alertConfig = config[type as keyof typeof config] ?? config.failed;
+  const { className, icon } = alertConfig;
 
   return (
-     <div
-      className={`w-[300px] md:w-96 flex items-center border-l-4 gap-4 p-4 px-3 md:px-6 border border-ring rounded-lg shadow-lg transition-all duration-700 ease-in-out animate-slide-in-right ${className}`}
+    <div
+      className={`w-[300px] z-50 md:w-96 flex items-center border-l-4 gap-4 p-4 px-3 md:px-6 border border-ring rounded-lg shadow-lg mr-5 animate__animated animate__slideInRight ${className}`}
     >
       {icon}
       <span className="text-base font-medium text-white">{message}</span>

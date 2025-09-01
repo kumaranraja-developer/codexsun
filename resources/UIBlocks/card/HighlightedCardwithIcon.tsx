@@ -19,7 +19,7 @@ export default function HighlightCardWithIcon({
   className
 }: HighlightCardProps) {
   return (
-    <section className="px-5 lg:px-[12%] bg-background text-website-foreground">
+    <section className="bg-background text-website-foreground">
       {/* Section Title */}
       <h2 className="text-3xl font-bold text-center pb-8">{sectionTitle}</h2>
 

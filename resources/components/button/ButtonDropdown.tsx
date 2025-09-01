@@ -7,6 +7,7 @@ import {
   shift,
   autoUpdate,
 } from "@floating-ui/react-dom";
+import React from "react";
 
 interface ColumnOption {
   key: string;

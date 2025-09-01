@@ -35,7 +35,7 @@ const TransparentCard: React.FC<TransparentCardProps> = ({ image }) => {
   return (
     <div
       ref={cardRef}
-      className="w-[80%] px-5 md:w-[70%] mx-auto overflow-hidden border border-white/30 transition-transform duration-500 ease-out"
+      className="w-[80%] md:w-[70%] mx-auto overflow-hidden border border-white/30 transition-transform duration-500 ease-out"
       style={{ transform: `scale(${scale})` }}
     >
       <div className="overflow-hidden w-full">
@@ -43,7 +43,7 @@ const TransparentCard: React.FC<TransparentCardProps> = ({ image }) => {
           <img
             src={image}
             alt="Dashboard Preview"
-            className="w-full h-full object-cover rounded-2xl"
+            className="w-full h-full object-contain rounded-2xl"
           />
         </div>
       </div>

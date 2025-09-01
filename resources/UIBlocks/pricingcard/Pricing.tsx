@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Check, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useInView } from "react-intersection-observer";
+import Button from "../../../resources/components/button/Button";
 interface Feature {
   id: number;
   text: string;
@@ -86,8 +87,8 @@ const Pricing: React.FC<PricingProps> = ({ plans }) => {
               ref={ref}
               key={plan.id}
               style={{ animationDelay: `${index * 0.2}s` }}
-              className={`relative bg-white shadow-lg rounded-2xl p-8 flex flex-col transition hover:shadow-2xl animate__animated ${animationClass}  ${
-                plan.highlight ? "border-2 border-primary scale-105" : ""
+              className={`relative border shadow-lg rounded-2xl p-8 flex flex-col transition hover:shadow-2xl animate__animated ${animationClass}  ${
+                plan.highlight ? "border-2 border-primary scale-105" : "bg-background border-ring/30"
               }`}
             >
               {/* Best Plan Badge */}
@@ -143,15 +144,15 @@ const Pricing: React.FC<PricingProps> = ({ plans }) => {
               )}
 
               {/* CTA Button */}
-              <button
-                className={`mt-8 w-full py-3 rounded-xl font-medium transition cursor-pointer ${
+              <Button
+                className={`mt-8 w-full py-3 rounded-xl font-medium transition cursor-pointer hover:scale-105 ${
                   plan.highlight
                     ? "bg-primary text-white hover:bg-primary/90"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
                 Get Started
-              </button>
+              </Button>
             </div>
           );
         })}
@@ -161,57 +162,3 @@ const Pricing: React.FC<PricingProps> = ({ plans }) => {
 };
 
 export default Pricing;
-
-// const plans = [
-//     {
-//       id: "free",
-//       name: "Free",
-//       price: 0,
-//       description: "Basic features for individuals",
-//       features: [
-//         { id: 1, text: "Access to core features" },
-//         { id: 2, text: "1 Project" },
-//         { id: 3, text: "Community Support" },
-//         { id: 4, text: "Basic Analytics" },
-//         { id: 5, text: "Email Alerts" },
-//         { id: 6, text: "Single User" },
-//         { id: 7, text: "Basic Templates" },
-//         { id: 8, text: "Limited Storage" },
-//       ],
-//     },
-//     {
-//       id: "pro",
-//       name: "Pro",
-//       price: 15,
-//       description: "Advanced features for professionals",
-//       highlight: true, // highlight this plan
-//       features: [
-//         { id: 1, text: "Everything in Free" },
-//         { id: 2, text: "Unlimited Projects" },
-//         { id: 3, text: "Priority Support" },
-//         { id: 4, text: "Advanced Analytics" },
-//         { id: 5, text: "Team Collaboration" },
-//         { id: 6, text: "Export Data" },
-//         { id: 7, text: "Custom Branding" },
-//         { id: 8, text: "Cloud Backup" },
-//         { id: 9, text: "Role Management" },
-//       ],
-//     },
-//     {
-//       id: "premium",
-//       name: "Premium",
-//       price: 30,
-//       description: "All features for large teams",
-//       features: [
-//         { id: 1, text: "Everything in Pro" },
-//         { id: 2, text: "Dedicated Manager" },
-//         { id: 3, text: "Custom Integrations" },
-//         { id: 4, text: "API Access" },
-//         { id: 5, text: "Advanced Security" },
-//         { id: 6, text: "24/7 Support" },
-//         { id: 7, text: "Custom Workflows" },
-//         { id: 8, text: "Unlimited Storage" },
-//       ],
-//     },
-//   ];
-//   <Pricing plans={plans} />

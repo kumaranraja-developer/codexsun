@@ -3,6 +3,7 @@ import ImageButton from "../button/ImageBtn";
 import ActionMenu from "./ActionMenu";
 import Warning from "../alert/Warning";
 import apiClient from "../../../resources/global/api/apiClients";
+import React from "react";
 
 export interface TableRowData {
   [key: string]: string | number;
@@ -177,7 +178,7 @@ function CommonTable({
               {head.map((h, i) => {
                 const key = h.key;
 
-                if (key === "id" || key === "name") {
+                if (key === "id") {
                   const allSelected = sortedBody.every((row) =>
                     selectedIds.includes(row.id)
                   );
@@ -309,7 +310,7 @@ function CommonTable({
                     const key = column.key;
                     const cellValue = item[key] || "";
 
-                    if (key === "id" || key === "name") {
+                    if (key === "id") {
                       return (
                         <td
                           key={colIndex}
