@@ -1,5 +1,5 @@
-// cortex/utils/server-logger.ts
 import os from "os";
+import chalk from "chalk";
 
 export interface FastifyLog {
     level: number;
@@ -7,9 +7,7 @@ export interface FastifyLog {
     pid: number;
     hostname: string;
     reqId: string;
-    res?: {
-        statusCode: number;
-    };
+    res?: { statusCode: number };
     responseTime?: number;
     msg: string;
 }
@@ -17,69 +15,45 @@ export interface FastifyLog {
 function formatDate(epoch: number): string {
     const d = new Date(epoch);
     const pad = (n: number) => String(n).padStart(2, "0");
-
-    const year = d.getFullYear();
-    const month = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-    const seconds = pad(d.getSeconds());
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-// ANSI color codes
-const colors = {
-    reset: "\x1b[0m",
-    gray: "\x1b[90m",
-    blue: "\x1b[34m",
-    green: "\x1b[32m",
-    yellow: "\x1b[33m",
-    red: "\x1b[31m",
-    magenta: "\x1b[35m",
-};
-
-function colorize(level: number, text: string): string {
-    switch (level) {
-        case 10: return colors.gray + text + colors.reset;    // TRACE
-        case 20: return colors.blue + text + colors.reset;    // DEBUG
-        case 30: return colors.green + text + colors.reset;   // INFO
-        case 40: return colors.yellow + text + colors.reset;  // WARN
-        case 50: return colors.red + text + colors.reset;     // ERROR
-        case 60: return colors.magenta + text + colors.reset; // FATAL
-        default: return text;
-    }
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+        d.getHours()
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export function formatServerLog(log: FastifyLog): string {
     const date = formatDate(log.time);
 
     const levelMap: Record<number, string> = {
-        10: "TRACE",
-        20: "DEBUG",
-        30: "INFO",
-        40: "WARN",
-        50: "ERROR",
-        60: "FATAL",
+        10: chalk.gray("🔍 TRACE"),
+        20: chalk.blue("🐛 DEBUG"),
+        30: chalk.green("ℹ️ INFO"),
+        40: chalk.yellow("⚠️ WARN"),
+        50: chalk.red.bold("❌ ERROR"),
+        60: chalk.magentaBright("💀 FATAL"),
     };
 
-    const levelText = levelMap[log.level] || `LVL${log.level}`;
-    const coloredLevel = colorize(log.level, levelText);
-
-    const status = log.res?.statusCode ? ` status=${log.res.statusCode}` : "";
+    const levelText = levelMap[log.level] || chalk.white(`LVL${log.level}`);
+    const status = log.res?.statusCode ? chalk.cyan(` status=${log.res.statusCode}`) : "";
     const response =
         log.responseTime !== undefined
-            ? ` responseTime=${log.responseTime.toFixed(2)}ms`
+            ? chalk.magenta(` responseTime=${log.responseTime.toFixed(2)}ms`)
             : "";
 
-    return `[${date}] [${coloredLevel}] (pid=${log.pid} host=${log.hostname} reqId=${log.reqId}) ${log.msg}${status}${response}`.trim();
+    return (
+        chalk.dim(`[${date}]`) +
+        ` [${levelText}] ` +
+        chalk.gray(`(pid=${log.pid} host=${log.hostname} reqId=${log.reqId ?? "-"})`) +
+        " " +
+        log.msg +
+        status +
+        response
+    ).trim();
 }
 
 /**
- * General-purpose logger for app code (not Fastify internals).
- * Includes timers, progress tracking, and elapsed time measurement.
+ * Internal class — NOT exported directly.
  */
-export class ServerLogger {
+class ServerLoggerClass {
     private context: string;
     private startTime: number;
     private timers: Record<string, number>;
@@ -91,44 +65,50 @@ export class ServerLogger {
     }
 
     info(msg: string) {
-        console.log(`[INFO][${this.context}] ${msg}`);
+        console.log(chalk.green(`✅ [INFO][${this.context}]`), msg);
+    }
+
+    warn(msg: string) {
+        console.warn(chalk.yellow(`⚠️ [WARN][${this.context}]`), msg);
     }
 
     error(msg: string) {
-        console.error(`[ERROR][${this.context}] ${msg}`);
+        console.error(chalk.red.bold(`❌ [ERROR][${this.context}]`), msg);
     }
 
-    // Timer utilities
     startTimer(label: string) {
         this.timers[label] = Date.now();
-        this.info(`⏱️ Timer "${label}" started`);
+        console.log(chalk.blue(`⏱️ [TIMER][${this.context}]`), `Started "${label}"`);
     }
 
     endTimer(label: string) {
         const start = this.timers[label];
         if (start) {
             const duration = Date.now() - start;
-            this.info(`⏱️ Timer "${label}" ended: ${duration}ms`);
+            console.log(
+                chalk.blue(`⏱️ [TIMER][${this.context}]`),
+                `Ended "${label}" in ${chalk.magenta(duration + "ms")}`
+            );
             delete this.timers[label];
         } else {
             this.error(`Timer "${label}" not found`);
         }
     }
 
-    // Progress indicator
     progress(current: number, total: number) {
         const percent = ((current / total) * 100).toFixed(1);
-        this.info(`Progress: ${current}/${total} (${percent}%)`);
+        console.log(
+            chalk.cyan(`📊 [PROGRESS][${this.context}]`),
+            `${current}/${total} (${percent}%)`
+        );
     }
 
-    // Elapsed since logger was created
     elapsed() {
         const ms = Date.now() - this.startTime;
         const sec = (ms / 1000).toFixed(2);
-        this.info(`⏲️ Elapsed: ${sec}s`);
+        console.log(chalk.magenta(`⏲️ [ELAPSED][${this.context}]`), `${sec}s`);
     }
 
-    // One-off startup/shutdown log (replacement for old function export)
     static oneOff(message: string) {
         const log: FastifyLog = {
             level: 30,
@@ -141,3 +121,15 @@ export class ServerLogger {
         console.log(formatServerLog(log));
     }
 }
+
+/**
+ * Proxy wrapper: allows both
+ *   new ServerLogger("ctx")
+ * and
+ *   ServerLogger("msg")
+ */
+export const ServerLogger: any = new Proxy(ServerLoggerClass as any, {
+    apply(_target, _thisArg, argArray) {
+        ServerLoggerClass.oneOff(argArray[0]);
+    },
+});

@@ -27,9 +27,7 @@ async function main() {
     // await tenantValidatorTests();
     // await tenantIntegrationTests();
 
-    const profile = "default";
-    const cfg = getDbConfig(profile); // or postgres, mysql, etc.
-    await runUserSmokeTest(profile);
+    await runUserSmokeTest();
 
 
 }
