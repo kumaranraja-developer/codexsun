@@ -1,6 +1,6 @@
 // apps/cxsun/src/App.tsx
 import { Link, Route, Routes, Navigate } from "react-router-dom";
-import TenantList from "../core/tenants/Tenant.list";
+import TenantList from "../core/tenant/Tenant.list";
 import React from "react";
 
 export default function App() {

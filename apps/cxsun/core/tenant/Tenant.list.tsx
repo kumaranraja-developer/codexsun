@@ -1,6 +1,4 @@
-// apps/cxsun/src/tenant/Tenant.list.tsx
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Tenant = {
     id: number;
@@ -16,16 +14,28 @@ export default function TenantList() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const apiUrl = import.meta.env.VITE_API_URL; // already a string
+
     useEffect(() => {
-        fetch("/api/tenants")
+        console.log("Calling:", `${apiUrl}/api/tenant`);
+
+        fetch(`${apiUrl}/api/tenant`)
             .then((res) => {
-                if (!res.ok) throw new Error("Failed to fetch tenant");
+                console.log("Response status:", res.status);
+                console.log("Response status:", res);
                 return res.json();
             })
-            .then(setTenants)
-            .catch((err) => setError(err.message))
+            .then((data) => {
+                console.log("Response data:", data);
+                setTenants(data);
+            })
+            .catch((err) => {
+                console.error("Fetch error:", err);
+                setError(err.message);
+            })
             .finally(() => setLoading(false));
-    }, []);
+    }, [apiUrl]);
+
 
     if (loading) return <p>Loading tenants...</p>;
     if (error) return <p style={{ color: "red" }}>Error: {error}</p>;

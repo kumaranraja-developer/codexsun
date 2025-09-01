@@ -1,100 +1,65 @@
-import { Request, Response } from "express";
-import { TenantRepo } from "./tenant.repo";
-import { TenantCreateSchema, TenantUpdateSchema } from "./tenant.validator";
-import { validateBody, validateParams, v } from "../../../../cortex/carex/validator";
+// apps/tenant.controller.ts
+import { FastifyInstance, FastifyPluginAsync } from "fastify";
+import { TenantRepo, TenantCreateInput, TenantUpdateInput } from "./tenant.repo";
 
-// Reusable param validators
-const IdParamSchema = v.object({ id: v.string() }).strict();
-const SlugParamSchema = v.object({ slug: v.string() }).strict();
+const tenantController: FastifyPluginAsync = async (fastify: FastifyInstance) => {
+    // List tenants (with optional query/search)
+    fastify.get("/", async (req) => {
+        const { q, active, limit, offset } = req.query as {
+            q?: string;
+            active?: string;
+            limit?: string;
+            offset?: string;
+        };
 
-// Export middlewares so routes can attach them
-export const TenantMW = {
-    idParam: validateParams(IdParamSchema),
-    slugParam: validateParams(SlugParamSchema),
-    storeBody: validateBody(TenantCreateSchema),
-    updateBody: validateBody(TenantUpdateSchema),
+        return TenantRepo.search({
+            q,
+            active: active === undefined ? undefined : active === "true",
+            limit: limit ? Number(limit) : 50,
+            offset: offset ? Number(offset) : 0,
+        });
+    });
+
+    // Count tenants
+    fastify.get("/count", async () => {
+        const count = await TenantRepo.count();
+        return { count };
+    });
+
+    // Get tenant by ID
+    fastify.get("/:id", async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const tenant = await TenantRepo.findById(Number(id));
+        if (!tenant) return reply.code(404).send({ error: "Tenant not found" });
+        return tenant;
+    });
+
+    // Create tenant
+    fastify.post("/", async (req, reply) => {
+        const body = req.body as TenantCreateInput;
+        if (!body.slug || !body.name) {
+            return reply.code(400).send({ error: "slug and name are required" });
+        }
+        const tenant = await TenantRepo.create(body);
+        return reply.code(201).send(tenant);
+    });
+
+    // Update tenant
+    fastify.put("/:id", async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const body = req.body as TenantUpdateInput;
+        const tenant = await TenantRepo.update(Number(id), body);
+        if (!tenant) return reply.code(404).send({ error: "Tenant not found" });
+        return tenant;
+    });
+
+    // Soft delete tenant
+    fastify.delete("/:id", async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const ok = await TenantRepo.softDelete(Number(id));
+        if (!ok) return reply.code(404).send({ error: "Tenant not found" });
+        return { success: true };
+    });
 };
 
-export default class TenantController {
-    /** GET /api/tenant?limit=&offset= */
-    static async index(req: Request, res: Response) {
-        try {
-            const limit = Math.min(Number(req.query.limit ?? 50), 200);
-            const offset = Math.max(Number(req.query.offset ?? 0), 0);
-            const rows = await TenantRepo.all(limit, offset);
-            res.json({ data: rows, meta: { limit, offset, count: rows.length } });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-
-    /** GET /api/tenant/:id */
-    static async show(req: Request, res: Response) {
-        try {
-            const id = Number(req.params.id);
-            const row = await TenantRepo.findById(id);
-            if (!row) return res.status(404).json({ error: "Tenant not found" });
-            res.json({ data: row });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-
-    /** GET /api/tenant/by-slug/:slug */
-    static async showBySlug(req: Request, res: Response) {
-        try {
-            const row = await TenantRepo.findBySlug(req.params.slug);
-            if (!row) return res.status(404).json({ error: "Tenant not found" });
-            res.json({ data: row });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-
-    /** POST /api/tenant */
-    static async store(req: Request, res: Response) {
-        try {
-            // body already validated by middleware
-            const body = (req as any).validated.body;
-
-            // simple uniqueness pre-check for slug; DB still enforces
-            const exists = await TenantRepo.findBySlug(body.slug);
-            if (exists) return res.status(409).json({ error: "Slug already exists" });
-
-            const created = await TenantRepo.create(body);
-            res.status(201).json({ data: created });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-
-    /** PATCH /api/tenant/:id */
-    static async update(req: Request, res: Response) {
-        try {
-            const id = Number(req.params.id);
-            const body = (req as any).validated.body;
-            const updated = await TenantRepo.update(id, body);
-            if (!updated) return res.status(404).json({ error: "Tenant not found" });
-            res.json({ data: updated });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-
-    /** DELETE /api/tenant/:id (soft delete) */
-    static async destroy(req: Request, res: Response) {
-        try {
-            const id = Number(req.params.id);
-            await TenantRepo.softDelete(id);
-            res.status(204).send();
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: "Internal Server Error" });
-        }
-    }
-}
+export default tenantController;

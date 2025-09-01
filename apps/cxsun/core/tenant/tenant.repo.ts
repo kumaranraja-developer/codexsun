@@ -61,7 +61,7 @@ function mapRow(r: any): TenantRow {
 }
 
 export class TenantRepo {
-    static table = "tenant";
+    static table = "tenants";
 
     /** Adapt placeholders based on driver */
     private static async adapt(sql: string): Promise<string> {
@@ -127,6 +127,9 @@ export class TenantRepo {
                                       WHERE ${where.join(" AND ")}
                                       ORDER BY id DESC
                                           LIMIT ? OFFSET ?`);
+
+        // 👇 Debug print
+        console.log("[TenantRepo.search] sql:", sql, "params:", params);
 
         const res = await execute("default", sql, params);
         const rows = res.rows ?? [];

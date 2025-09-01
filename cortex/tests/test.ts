@@ -8,9 +8,9 @@ import 'dotenv/config';
 import {migrations} from "./test_migration";
 // import {migration_runner} from "./test_migration_runner";
 
-import { tenantControllerTests } from "../../apps/cxsun/core/tenants/test_tenant_controller";
-import { tenantValidatorTests } from "../../apps/cxsun/core/tenants/test_tenant_validator";
-import {tenantIntegrationTests} from "../../apps/cxsun/core/tenants/test_tenant_integration";
+import { tenantControllerTests } from "../../apps/cxsun/core/tenant/test_tenant_controller";
+import { tenantValidatorTests } from "../../apps/cxsun/core/tenant/test_tenant_validator";
+import {tenantIntegrationTests} from "../../apps/cxsun/core/tenant/test_tenant_integration";
 
 async function main() {
 
