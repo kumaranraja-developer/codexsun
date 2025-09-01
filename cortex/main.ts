@@ -1,43 +1,36 @@
 // cortex/main.ts
-
-import { createFastify } from "./server/create";
+import Fastify from "fastify";
 import { mountApps } from "./server/mount";
-import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { logger } from "./utils/log_cx";
 
-const APPS_DIR = join(process.cwd(), "apps");
+export async function bootApp() {
+    const app = Fastify({ logger: true });
 
-export function discoverApps(): string[] {
-    try {
-        return readdirSync(APPS_DIR).filter((n) => {
-            const p = join(APPS_DIR, n);
-            return statSync(p).isDirectory();
-        }).sort();
-    } catch {
-        return [];
-    }
-}
+    // mount apps (auto-discover, or use APP_LIST=cxsun,admin)
+    const apps = await mountApps(app);
 
-export async function createServer() {
-    const app = createFastify();
-
-    app.get("/healthz", async () => ({ ok: true, service: "codexsun" }));
-    app.get("/version", async () => ({
-        name: "codexsun",
-        version: process.env.npm_package_version ?? "0.0.0",
-        env: process.env.NODE_ENV ?? "development",
-    }));
-
-    const apps = discoverApps();
-    await mountApps(app, apps);
-
+    // health/root
     app.get("/", async () => ({
         name: "codexsun",
         apps,
-        tips: apps.map((n) => `GET /${n}`),
+        tips: apps.map((n) => `App '${n}' mounted under /api`),
     }));
 
-    logger.info("Framework booted");
+    // In production, serve the built frontend (optional, only if you want one-port prod)
+    if (process.env.NODE_ENV === "production") {
+        const fastifyStatic = (await import("@fastify/static")).default;
+        await app.register(fastifyStatic, {
+            root: join(process.cwd(), "apps", "cxsun", "dist"),
+            prefix: "/",
+        });
+        app.setNotFoundHandler((req, reply) => {
+            if (req.raw.url?.startsWith("/api")) {
+                reply.code(404).send({ error: "Not found" });
+            } else {
+                reply.sendFile("index.html");
+            }
+        });
+    }
+
     return app;
 }

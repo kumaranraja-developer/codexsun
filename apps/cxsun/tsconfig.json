@@ -10,5 +10,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["app.ts"]
+  "include": ["app.ts"],
+  "jsx": "react-jsx"
 }

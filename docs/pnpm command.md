@@ -6,3 +6,15 @@ pnpm add -D @types/node --filter @codexsun/cortex
 
 
 
+pnpm add -D @fastify/static --filter @codexsun/cortex
+
+pnpm add -D fastify-plugin --filter @codexsun/cortex
+
+
+pnpm add -Dw vite @vitejs/plugin-react
+
+
+
+pnpm add -D @fastify/static --filter @codexsun/app-cxsun
+
+pnpm add -D fastify-plugin --filter @codexsun/app-cxsun

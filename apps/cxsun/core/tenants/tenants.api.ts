@@ -1,3 +1,5 @@
+// apps/cxsun/core/tenants/tenants.api.ts
+
 import { Router } from "express";
 import TenantController, { TenantMW } from "./tenant.controller";
 

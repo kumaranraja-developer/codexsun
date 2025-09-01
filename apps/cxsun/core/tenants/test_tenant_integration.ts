@@ -6,7 +6,7 @@ import {execSync} from "node:child_process";
 import chalk from "chalk";
 import tenantsRouter from "./tenants.api";
 import {TenantRepo} from "./tenant.repo";
-import {closeEngine, execute, execute, getConnection} from "../../../../cortex/database/connection_manager";
+import {closeEngine, execute } from "../../../../cortex/database/connection_manager";
 
 /**
  * Starts a lightweight Express app with the tenants API mounted.
