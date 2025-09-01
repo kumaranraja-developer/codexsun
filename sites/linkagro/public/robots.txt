@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fabulous-queijadas-684a73.netlify.app/sitemap.xml

@@ -1,0 +1,11 @@
+# Enable rewrite engine
+RewriteEngine On
+RewriteBase /
+
+# Allow direct access to index.html
+RewriteRule ^index\.html$ - [L]
+
+# Redirect everything else to index.html (SPA fallback)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]

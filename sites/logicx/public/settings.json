@@ -1,0 +1,25 @@
+{
+  "theme": "system",
+  "recordsPerPage": 60,
+  "user": {
+    "name": "Link Agro",
+    "email": "linkagro@gmail.com",
+    "avatar": "/avatars/shadcn.jpg"
+  },
+
+  "logo": {
+    "path": "/assets/logo/logicx_logo.svg",
+    "position": "center",
+    "height": 20,
+    "font_size": 0,
+    "font_subsize":0,
+    "company_name": "Logicx",
+    "company_subname":"",
+    "mode":"logo",
+    "color": "",
+    "text_color": "text-[#3A3182]",
+    "padding": "2",
+    "font":"",
+    "footer_logo": "/assets/logo/logicx_logo.svg"
+  }
+}

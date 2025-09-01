@@ -1,0 +1,39 @@
+{
+  "theme": "system",
+  "recordsPerPage": 60,
+  "user": {
+    "name": "Logicx",
+    "email": "logicx@gmail.com",
+    "avatar": "/avatars/shadcn.jpg"
+  },
+
+  "logo": {
+    "path": "/assets/svg/aaran_logo.svg",
+    "position": "center",
+    "height": "60",
+    "font_size": "2",
+    "company_name": "AARAN",
+    "mode":"logo",
+    "color": "",
+    "text_color": "text-white",
+    "padding": "2"
+  },
+
+  "sidemenu": {
+    "main": [
+      {
+        "title": "Dashboard",
+        "icon": "LayoutDashboard",
+        "url": ""
+      },
+      {
+        "title": "Docker",
+        "currentComponent": "docker",
+        "icon": "LayoutDashboard",
+        "url": "docker"
+      }
+    ],
+    "help": {},
+    "document": {}
+  }
+}
