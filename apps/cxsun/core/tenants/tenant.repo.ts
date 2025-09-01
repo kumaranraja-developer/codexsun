@@ -1,5 +1,4 @@
-// cortex/repos/TenantRepo.ts
-import { getConnection } from '../../../../cortex/database/connection_manager';
+import { execute } from "../../../../cortex/database/connection_manager";
 
 export type TenantRow = {
     id: number;
@@ -8,7 +7,7 @@ export type TenantRow = {
     email: string | null;
     meta: unknown | null;
     is_active: boolean | 0 | 1 | "0" | "1" | "t" | "f" | "true" | "false";
-    created_at: string; // or Date depending on driver
+    created_at: string;
     updated_at: string;
     deleted_at: string | null;
 };
@@ -18,7 +17,7 @@ export type TenantCreateInput = {
     name: string;
     email?: string | null;
     meta?: unknown | null;
-    is_active?: boolean; // default true at validator/migration level
+    is_active?: boolean;
 };
 
 export type TenantUpdateInput = {
@@ -35,10 +34,7 @@ function coerceBool(b: TenantRow["is_active"]): boolean {
 }
 
 function serializeMeta(v: unknown | null | undefined): unknown {
-    if (v === undefined) return null;
-    if (v === null) return null;
-    // Most drivers accept JSON directly; SQLite/MySQL often store as TEXT/JSON.
-    // To be safe across engines, stringify objects/arrays.
+    if (v === undefined || v === null) return null;
     if (typeof v === "object") return JSON.stringify(v);
     return v;
 }
@@ -46,119 +42,14 @@ function serializeMeta(v: unknown | null | undefined): unknown {
 function deserializeMeta(v: unknown): unknown {
     if (v == null) return null;
     if (typeof v === "string") {
-        try { return JSON.parse(v); } catch { /* keep as string */ }
+        try {
+            return JSON.parse(v);
+        } catch {
+            /* keep string */
+        }
     }
     return v;
 }
-
-/* -------------------------------------------------------------------------- */
-/*                         Driver-agnostic SQL helpers                         */
-/* -------------------------------------------------------------------------- */
-
-/** Result shape for mutation calls across drivers. */
-type RunResult = {
-    // sqlite / better-sqlite3
-    lastID?: number;
-    changes?: number;
-    // mysql / mariadb
-    insertId?: number;
-    affectedRows?: number;
-    // pg: often returns rows/command; we won't rely on it for lastID/changes
-    rows?: any[];
-    rowCount?: number;
-};
-
-/** Convert `?` placeholders to `$1`, `$2`, ... (Postgres style) */
-function toPgPlaceholders(sql: string): string {
-    let i = 0;
-    return sql.replace(/\?/g, () => `$${++i}`);
-}
-
-/** Heuristic: Postgres syntax error (42601) or contains "at or near"/"syntax error" */
-function looksLikePgSyntaxError(err: unknown): boolean {
-    const e = err as any;
-    if (!e) return false;
-    if (e.code === "42601") return true; // PG: syntax_error
-    const msg = String(e.message || "");
-    return /at or near/i.test(msg) || /syntax error/i.test(msg);
-}
-
-/**
- * Try the sql/params; if it fails with a PG parse error and contains '?',
- * retry with $-style placeholders.
- */
-async function tryWithPgRetry<T>(
-    runner: (sql: string, params: any[]) => Promise<T>,
-    sql: string,
-    params: any[]
-): Promise<T> {
-    try {
-        return await runner(sql, params);
-    } catch (err) {
-        if (/\?/.test(sql) && looksLikePgSyntaxError(err)) {
-            const pgSql = toPgPlaceholders(sql);
-            return await runner(pgSql, params);
-        }
-        throw err;
-    }
-}
-
-async function qAll(conn: any, sql: string, params: any[] = []): Promise<any[]> {
-    if (typeof conn.all === "function") {
-        // SQLite-like
-        const rows = await tryWithPgRetry<any[]>((s, p) => conn.all(s, p), sql, params);
-        return Array.isArray(rows) ? rows : [];
-    }
-    if (typeof conn.query === "function") {
-        // MySQL/PG-like
-        const rows = await tryWithPgRetry<any[]>((s, p) => conn.query(s, p), sql, params);
-        // Some drivers return { rows }, others return array directly
-        if (Array.isArray(rows)) return rows;
-        if (rows && Array.isArray((rows as any).rows)) return (rows as any).rows;
-        return [];
-    }
-    throw new Error("Connection does not support all/query");
-}
-
-async function qGet(conn: any, sql: string, params: any[] = []): Promise<any | null> {
-    if (typeof conn.get === "function") {
-        const row = await tryWithPgRetry<any>((s, p) => conn.get(s, p), sql, params);
-        return row ?? null;
-    }
-    if (typeof conn.query === "function") {
-        const result = await tryWithPgRetry<any>((s, p) => conn.query(s, p), sql, params);
-        if (Array.isArray(result)) return result[0] ?? null;
-        if (result && Array.isArray(result.rows)) return result.rows[0] ?? null;
-        return null;
-    }
-    throw new Error("Connection does not support get/query");
-}
-
-async function qRun(conn: any, sql: string, params: any[] = []): Promise<RunResult> {
-    if (typeof conn.query === "function") {
-        const res = await tryWithPgRetry<any>((s, p) => conn.query(s, p), sql, params);
-
-        // 🔑 patch: normalize pg UPDATE/DELETE response
-        if (res && typeof res.rowCount === "number" && res.command === "UPDATE") {
-            return { rowCount: res.rowCount };
-        }
-        if (res && typeof res.rowCount === "number" && res.command === "DELETE") {
-            return { rowCount: res.rowCount };
-        }
-
-        return res as RunResult;
-    }
-
-    if (typeof conn.run === "function") {
-        return await tryWithPgRetry<any>((s, p) => conn.run(s, p), sql, params);
-    }
-    if (typeof conn.execute === "function") {
-        return await tryWithPgRetry<any>((s, p) => conn.execute(s, p), sql, params);
-    }
-
-    throw new Error("Connection does not support run/execute/query");
-}
-
 
 function mapRow(r: any): TenantRow {
     return {
@@ -168,54 +59,43 @@ function mapRow(r: any): TenantRow {
     };
 }
 
-/* -------------------------------------------------------------------------- */
-
 export class TenantRepo {
     static table = "tenants";
 
-    /** List non-deleted tenants, newest first */
     static async all(limit = 50, offset = 0): Promise<TenantRow[]> {
-        const conn = await getConnection();
         const sql = `SELECT * FROM ${this.table}
                      WHERE deleted_at IS NULL
                      ORDER BY id DESC
                          LIMIT ? OFFSET ?`;
-        const rows = await qAll(conn, sql, [limit, offset]); // any[]
+        const res = await execute("default", sql, [limit, offset]);
+        const rows = res.rows ?? [];
         return rows.map(mapRow);
     }
 
     static async count(): Promise<number> {
-        const conn = await getConnection();
         const sql = `SELECT COUNT(*) AS c FROM ${this.table} WHERE deleted_at IS NULL`;
-        const row = await qGet(conn, sql);
-        const anyRow = row as any;
-        const v = anyRow?.c ?? anyRow?.count ?? Object.values(anyRow ?? {})[0];
+        const res = await execute("default", sql);
+        const row = res.rows?.[0] ?? {};
+        const v = row.c ?? row.count ?? Object.values(row)[0];
         return Number(v || 0);
     }
 
     static async findById(id: number): Promise<TenantRow | null> {
-        const conn = await getConnection();
         const sql = `SELECT * FROM ${this.table} WHERE id = ? AND deleted_at IS NULL`;
-        const row = await qGet(conn, sql, [id]);
+        const res = await execute("default", sql, [id]);
+        const row = res.rows?.[0];
         return row ? mapRow(row) : null;
     }
 
     static async findBySlug(slug: string): Promise<TenantRow | null> {
-        const conn = await getConnection();
         const sql = `SELECT * FROM ${this.table} WHERE slug = ? AND deleted_at IS NULL`;
-        const row = await qGet(conn, sql, [slug]);
+        const res = await execute("default", sql, [slug]);
+        const row = res.rows?.[0];
         return row ? mapRow(row) : null;
     }
 
-    /** Basic search on slug/name/email with optional active filter */
-    static async search(opts: {
-        q?: string;
-        active?: boolean;
-        limit?: number;
-        offset?: number;
-    } = {}): Promise<TenantRow[]> {
+    static async search(opts: { q?: string; active?: boolean; limit?: number; offset?: number } = {}): Promise<TenantRow[]> {
         const { q, active, limit = 50, offset = 0 } = opts;
-        const conn = await getConnection();
 
         const where: string[] = ["deleted_at IS NULL"];
         const params: any[] = [];
@@ -226,24 +106,24 @@ export class TenantRepo {
         }
 
         if (q && q.trim()) {
-            // Use LIKE for cross-dialect match; switch to ILIKE if you normalize for PG.
             where.push("(slug LIKE ? OR name LIKE ? OR email LIKE ?)");
             const pat = `%${q}%`;
             params.push(pat, pat, pat);
         }
 
+        params.push(limit, offset);
+
         const sql = `SELECT * FROM ${this.table}
                      WHERE ${where.join(" AND ")}
                      ORDER BY id DESC
                          LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
 
-        const rows = await qAll(conn, sql, params);
+        const res = await execute("default", sql, params);
+        const rows = res.rows ?? [];
         return rows.map(mapRow);
     }
 
     static async create(data: TenantCreateInput): Promise<TenantRow> {
-        const conn = await getConnection();
         const now = new Date().toISOString();
 
         const sql = `INSERT INTO ${this.table}
@@ -260,63 +140,80 @@ export class TenantRepo {
             now,
         ];
 
-        const res = await qRun(conn, sql, params);
+        const res = await execute("default", sql, params);
+        console.log("[TenantRepo.create] raw execute result:", res);
 
-        // Pull back created row; prefer last insert id if available, else lookup by slug
-        const lastId: number | undefined =
-            (res && (res.lastID ?? res.insertId)) !== undefined
-                ? Number((res as RunResult).lastID ?? (res as RunResult).insertId)
-                : undefined;
+        // normalize insert ID across drivers
+        let lastId: number | undefined;
+        if (res.insertId !== undefined) lastId = Number(res.insertId);
+        else if (res.lastID !== undefined) lastId = Number(res.lastID);
+        else if (res.lastInsertRowid !== undefined) lastId = Number(res.lastInsertRowid);
+
+        console.log("[TenantRepo.create] normalized lastId:", lastId);
 
         if (lastId) {
             const row = await this.findById(lastId);
+            console.log("[TenantRepo.create] findById result:", row);
             if (row) return row;
         }
+
         const row = await this.findBySlug(data.slug);
-        if (!row) throw new Error("Failed to load created tenant");
+        console.log("[TenantRepo.create] fallback findBySlug result:", row);
+        if (!row) {
+            console.error("[TenantRepo.create] Insert failed, res:", res);
+            throw new Error("Failed to load created tenant");
+        }
         return row;
     }
 
     static async update(id: number, data: TenantUpdateInput): Promise<TenantRow | null> {
-        const conn = await getConnection();
         const sets: string[] = [];
         const vals: any[] = [];
 
-        if (data.name !== undefined) { sets.push("name = ?"); vals.push(data.name); }
-        if (data.email !== undefined) { sets.push("email = ?"); vals.push(data.email ?? null); }
-        if (data.meta !== undefined) { sets.push("meta = ?"); vals.push(serializeMeta(data.meta)); }
-        if (data.is_active !== undefined) { sets.push("is_active = ?"); vals.push(data.is_active ? 1 : 0); }
+        if (data.name !== undefined) {
+            sets.push("name = ?");
+            vals.push(data.name);
+        }
+        if (data.email !== undefined) {
+            sets.push("email = ?");
+            vals.push(data.email ?? null);
+        }
+        if (data.meta !== undefined) {
+            sets.push("meta = ?");
+            vals.push(serializeMeta(data.meta));
+        }
+        if (data.is_active !== undefined) {
+            sets.push("is_active = ?");
+            vals.push(data.is_active ? 1 : 0);
+        }
 
-        // nothing to do
         if (!sets.length) return this.findById(id);
 
         sets.push("updated_at = ?");
         vals.push(new Date().toISOString());
+        vals.push(id);
 
         const sql = `UPDATE ${this.table}
                      SET ${sets.join(", ")}
                      WHERE id = ? AND deleted_at IS NULL`;
-        vals.push(id);
 
-        await qRun(conn, sql, vals);
+        await execute("default", sql, vals);
         return this.findById(id);
     }
 
     static async softDelete(id: number): Promise<boolean> {
-        const conn = await getConnection();
         const now = new Date().toISOString();
-
         const sql = `UPDATE tenants
                      SET deleted_at = ?
                      WHERE id = ? AND deleted_at IS NULL`;
 
-        const res = await qRun(conn, sql, [now, id]) as RunResult;
-        const changes = (res?.changes ?? res?.affectedRows ?? res?.rowCount ?? 0);
+        const res = await execute("default", sql, [now, id]);
+        const changes = res?.rowCount ?? res?.affectedRows ?? res?.changes ?? 0;
 
         if (!changes) {
             const after = await this.findById(id);
             return after === null;
         }
-        return changes > 0;
+        return true;
     }
 }

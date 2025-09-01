@@ -85,10 +85,9 @@ function columnLine(c: ColumnSpec): string[] {
         case "timestamps":
         case "timestampsTz":
             return [
-                `\`${q("created_at")} TEXT DEFAULT (datetime('now'))`,
-                `\`${q("updated_at")} TEXT DEFAULT (datetime('now'))`
+                `${q("created_at")} TEXT DEFAULT (datetime('now'))`,
+                `${q("updated_at")} TEXT DEFAULT (datetime('now'))`
             ];
-
         case "softDeletes":
         case "softDeletesTz":
             return [`${q(c.name ?? "deleted_at")} TEXT NULL`];

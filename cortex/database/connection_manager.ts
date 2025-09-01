@@ -1,6 +1,6 @@
 import { Engine } from './Engine';
 import { getDbConfig } from './getDbConfig';
-import type {DBConfig, DBDriver, NetworkDBConfig, SQLiteDBConfig} from './types';
+import type { DBConfig, DBDriver, NetworkDBConfig, SQLiteDBConfig } from './types';
 
 type Profile = 'default' | 'BLUE' | 'SANDBOX' | (string & {});
 
@@ -19,7 +19,6 @@ function buildEngine(cfg: DBConfig): Engine {
         case 'mariadb':
             return new MariaDBEngine(cfg as NetworkDBConfig);
         default: {
-            // Exhaustiveness check – if we ever add a driver and don’t handle it, TS errors here
             const _exhaustive: never = cfg.driver;
             throw new Error(`Unsupported driver: ${_exhaustive as DBDriver}`);
         }
@@ -33,9 +32,12 @@ export async function prepareEngine(profile: Profile = 'default'): Promise<Engin
 
     if (current && current.cfgKey === cfg.cfgKey) return current;
 
-    // rotate engine if different config
     if (current) {
-        try { await current.close(); } catch { /* ignore */ }
+        try {
+            await current.close();
+        } catch {
+            /* ignore */
+        }
         enginesByProfile.delete(profile);
     }
 
@@ -51,39 +53,53 @@ export function getEngine(profile: Profile = 'default'): Engine | undefined {
 }
 
 export async function getConnection(profile: Profile = 'default'): Promise<unknown> {
-    const eng = (await prepareEngine(profile));
+    console.log('[DB] getConnection called for', profile);
+    const eng = await prepareEngine(profile);
     return eng.getConnection();
 }
 
 export async function closeEngine(profile: Profile = 'default'): Promise<void> {
     const eng = enginesByProfile.get(profile);
     if (eng) {
+        console.log('[DB] closeEngine called – closing all pools');
         await eng.close();
         enginesByProfile.delete(profile);
     }
 }
 
-/** DB operations (delegate to the underlying engine) */
+/** DB operations (delegates straight to engine) */
 export async function execute(profile: Profile, sql: string, params?: unknown) {
     const eng = await prepareEngine(profile);
     return eng.execute(sql, params);
 }
+
 export async function fetchOne<T = any>(profile: Profile, sql: string, params?: unknown) {
     const eng = await prepareEngine(profile);
     return eng.fetchOne<T>(sql, params);
 }
+
 export async function fetchAll<T = any>(profile: Profile, sql: string, params?: unknown) {
     const eng = await prepareEngine(profile);
     return eng.fetchAll<T>(sql, params);
 }
+
 export async function executeMany(profile: Profile, sql: string, paramSets: unknown[]) {
     const eng = await prepareEngine(profile);
     return eng.executeMany(sql, paramSets);
 }
 
-export async function begin(profile: Profile)  { const eng = await prepareEngine(profile); return eng.begin(); }
-export async function commit(profile: Profile) { const eng = await prepareEngine(profile); return eng.commit(); }
-export async function rollback(profile: Profile){ const eng = await prepareEngine(profile); return eng.rollback(); }
+export async function begin(profile: Profile) {
+    const eng = await prepareEngine(profile);
+    return eng.begin();
+}
+export async function commit(profile: Profile) {
+    const eng = await prepareEngine(profile);
+    return eng.commit();
+}
+export async function rollback(profile: Profile) {
+    const eng = await prepareEngine(profile);
+    return eng.rollback();
+}
 
 export async function healthz(profile: Profile = 'default'): Promise<boolean> {
     const eng = await prepareEngine(profile);
@@ -94,8 +110,8 @@ export async function healthz(profile: Profile = 'default'): Promise<boolean> {
 export async function teardownEngine(profile: Profile): Promise<void> {
     const eng = enginesByProfile.get(profile);
     try {
-        if (eng && typeof (eng as any).close === "function") {
-            await (eng as any).close(); // mariadb/mysql2: pool.end() / mariadb: pool.end()
+        if (eng && typeof (eng as any).close === 'function') {
+            await (eng as any).close();
         }
     } finally {
         enginesByProfile.delete(profile);

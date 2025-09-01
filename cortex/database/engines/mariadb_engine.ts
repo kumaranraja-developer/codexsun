@@ -1,6 +1,7 @@
 import { BaseEngine } from '../Engine';
 import type { NetworkDBConfig } from '../types';
 import mariadb, { Pool, PoolConnection } from 'mariadb';
+import { queryAdapter } from '../queryAdapter'; // shared logic
 
 export class MariaDBEngine extends BaseEngine {
     private cfg: NetworkDBConfig;
@@ -24,7 +25,6 @@ export class MariaDBEngine extends BaseEngine {
             ssl: this.cfg.ssl ? {} : undefined,
             socketPath: this.cfg.socketPath,
         });
-        // warm ping
         const conn = await this.pool.getConnection();
         await conn.ping();
         conn.release();
@@ -41,65 +41,70 @@ export class MariaDBEngine extends BaseEngine {
         return this.pool!.getConnection();
     }
 
-    protected async _execute(sql: string, params?: unknown): Promise<number | null> {
+    protected async _execute(sql: string, params?: unknown): Promise<any> {
+        const { sql: normSql, params: normParams } = queryAdapter("mariadb", sql, params);
         const conn = await this._get_connection();
         try {
-            const res: any = await conn.query(sql, params as any);
-            // mariadb returns { affectedRows }
-            return typeof res?.affectedRows === 'number' ? res.affectedRows : null;
+            const res: any = await conn.query(normSql, normParams as any);
+
+            // Normalize: mariadb returns insertId + affectedRows
+            const rows = Array.isArray(res) ? res : [];
+            const insertId = res?.insertId !== undefined ? Number(res.insertId) : undefined;
+
+            return {
+                rows,
+                rowCount: rows.length,
+                affectedRows: res?.affectedRows ?? 0,
+                insertId,
+                lastID: insertId, // alias for consistency
+            };
         } finally {
             conn.release();
         }
     }
 
     protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
-        const conn = await this._get_connection();
-        try {
-            const rows: any[] = await conn.query(sql, params as any);
-            // conn.query returns array with an extra meta row sometimes; slice out
-            const data = Array.isArray(rows) ? rows : [];
-            return (data[0] ?? null) as T | null;
-        } finally {
-            conn.release();
-        }
+        const result = await this._execute(sql, params);
+        return (result.rows?.[0] ?? null) as T | null;
     }
 
     protected async _fetchall<T = any>(sql: string, params?: unknown): Promise<T[]> {
-        const conn = await this._get_connection();
-        try {
-            const rows: any[] = await conn.query(sql, params as any);
-            return (Array.isArray(rows) ? rows : []) as T[];
-        } finally {
-            conn.release();
-        }
+        const result = await this._execute(sql, params);
+        return (result.rows ?? []) as T[];
     }
 
-    protected async _executemany(sql: string, paramSets: unknown[]): Promise<number | null> {
+    protected async _executemany(sql: string, paramSets: unknown[]): Promise<any> {
+        const { sql: normSql } = queryAdapter("mariadb", sql);
         const conn = await this._get_connection();
         try {
             let total = 0;
+            const insertIds: number[] = [];
             for (const p of paramSets) {
-                const res: any = await conn.query(sql, p as any);
-                total += typeof res?.affectedRows === 'number' ? res.affectedRows : 0;
+                const { params: normParams } = queryAdapter("mariadb", sql, p);
+                const res: any = await conn.query(normSql, normParams as any);
+                total += res?.affectedRows ?? 0;
+                if (res?.insertId !== undefined) {
+                    insertIds.push(Number(res.insertId));
+                }
             }
-            return total;
+            return { rowCount: total, insertIds, lastID: insertIds[insertIds.length - 1] };
         } finally {
             conn.release();
         }
     }
 
     protected async _begin(): Promise<void> {
-        const conn = await this._get_connection();
-        await conn.beginTransaction();
-        // keep connection open for following ops? We’re using autograb per op,
-        // so for tx tests we’ll send BEGIN/COMMIT/ROLLBACK via execute directly:
-        conn.release();
+        await this._execute("BEGIN");
     }
-    protected async _commit(): Promise<void>  { await this._execute('COMMIT'); }
-    protected async _rollback(): Promise<void>{ await this._execute('ROLLBACK'); }
+    protected async _commit(): Promise<void> {
+        await this._execute("COMMIT");
+    }
+    protected async _rollback(): Promise<void> {
+        await this._execute("ROLLBACK");
+    }
 
     protected async _test_connection(): Promise<boolean> {
-        const row = await this._fetchone<{ ok: number }>('SELECT 1 AS ok');
+        const row = await this._fetchone<{ ok: number }>("SELECT 1 AS ok");
         return !!row && row.ok === 1;
     }
 }

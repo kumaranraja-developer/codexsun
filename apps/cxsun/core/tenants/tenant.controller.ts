@@ -90,8 +90,7 @@ export default class TenantController {
     static async destroy(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);
-            const ok = await TenantRepo.softDelete(id);
-            if (!ok) return res.status(404).json({ error: "Tenant not found" });
+            await TenantRepo.softDelete(id);
             res.status(204).send();
         } catch (err) {
             console.error(err);
