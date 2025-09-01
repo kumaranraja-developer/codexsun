@@ -1,15 +1,15 @@
 // cortex/database/engines/postgres_engine.ts
-import { BaseEngine } from '../Engine';
-import type { NetworkDBConfig } from '../types';
-import { Pool, PoolClient } from 'pg';
-import { queryAdapter, rowsAdapter } from '../queryAdapter'; // shared helpers
+import {BaseEngine} from '../Engine';
+import type {NetworkDBConfig} from '../types';
+import {Pool, PoolClient} from 'pg';
+import {queryAdapter, rowsAdapter} from '../queryAdapter'; // shared helpers
 
 export class PostgresEngine extends BaseEngine {
     private cfg: NetworkDBConfig;
     private pool: Pool | null = null;
 
     constructor(cfg: NetworkDBConfig) {
-        super({ profile: cfg.profile, driver: 'postgres', cfgKey: cfg.cfgKey });
+        super({profile: cfg.profile, driver: 'postgres', cfgKey: cfg.cfgKey});
         this.cfg = cfg;
     }
 
@@ -21,7 +21,7 @@ export class PostgresEngine extends BaseEngine {
             user: this.cfg.user,
             password: this.cfg.password,
             database: this.cfg.database,
-            ssl: this.cfg.ssl ? { rejectUnauthorized: false } : undefined,
+            ssl: this.cfg.ssl ? {rejectUnauthorized: false} : undefined,
             max: this.cfg.pool?.max ?? 10,
             idleTimeoutMillis: this.cfg.pool?.idleMillis ?? 10000,
             connectionTimeoutMillis: this.cfg.pool?.acquireTimeoutMillis ?? 15000,
@@ -42,9 +42,33 @@ export class PostgresEngine extends BaseEngine {
         return this.pool!.connect();
     }
 
-    protected async _execute(sql: string, params?: unknown): Promise<any> {
-        let { sql: normSql, params: normParams } = queryAdapter("postgres", sql, params);
+    protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
+        const {sql: normSql, params: normParams} = queryAdapter("postgres", sql, params);
+        const c = await this._get_connection();
+        try {
+            const res = await c.query(normSql, normParams as any[]);
+            const rows = rowsAdapter("postgres", res.rows ?? []);
+            return (rows[0] ?? null) as T | null;
+        } finally {
+            c.release();
+        }
+    }
 
+    protected async _fetchall<T = any>(sql: string, params?: unknown): Promise<T[]> {
+        const {sql: normSql, params: normParams} = queryAdapter("postgres", sql, params);
+        const c = await this._get_connection();
+        try {
+            const res = await c.query(normSql, normParams as any[]);
+            return rowsAdapter("postgres", res.rows ?? []) as T[];
+        } finally {
+            c.release();
+        }
+    }
+
+    protected async _execute(sql: string, params?: unknown): Promise<any> {
+        let {sql: normSql, params: normParams} = queryAdapter("postgres", sql, params);
+
+        // Auto-append RETURNING id for inserts without RETURNING
         if (/^\s*insert/i.test(normSql) && !/returning\s+/i.test(normSql)) {
             normSql = normSql.trim().replace(/;?$/, " RETURNING id;");
         }
@@ -61,7 +85,7 @@ export class PostgresEngine extends BaseEngine {
 
             return {
                 rows,
-                rowCount: res.rowCount ?? 0,
+                rowCount: res.rowCount ?? rows.length,
                 command: res.command,
                 insertId,
                 lastID: insertId,
@@ -71,31 +95,8 @@ export class PostgresEngine extends BaseEngine {
         }
     }
 
-    protected async _fetchone<T = any>(sql: string, params?: unknown): Promise<T | null> {
-        const { sql: normSql, params: normParams } = queryAdapter("postgres", sql, params);
-        const c = await this._get_connection();
-        try {
-            const res = await c.query(normSql, normParams as any[]);
-            const rows = rowsAdapter("postgres", res.rows ?? []);
-            return (rows[0] ?? null) as T | null;
-        } finally {
-            c.release();
-        }
-    }
-
-    protected async _fetchall<T = any>(sql: string, params?: unknown): Promise<T[]> {
-        const { sql: normSql, params: normParams } = queryAdapter("postgres", sql, params);
-        const c = await this._get_connection();
-        try {
-            const res = await c.query(normSql, normParams as any[]);
-            return rowsAdapter("postgres", res.rows ?? []) as T[];
-        } finally {
-            c.release();
-        }
-    }
-
     protected async _executemany(sql: string, paramSets: unknown[]): Promise<any> {
-        let { sql: normSql } = queryAdapter("postgres", sql);
+        let {sql: normSql} = queryAdapter("postgres", sql);
 
         if (/^\s*insert/i.test(normSql) && !/returning\s+/i.test(normSql)) {
             normSql = normSql.trim().replace(/;?$/, " RETURNING id;");
@@ -103,10 +104,23 @@ export class PostgresEngine extends BaseEngine {
 
         const c = await this._get_connection();
         try {
+            // 🔑 Detect SELECT queries
+            if (/^\s*select/i.test(normSql)) {
+                const allRows: any[] = [];
+                for (const p of paramSets) {
+                    const {params: normParams} = queryAdapter("postgres", sql, p);
+                    const res = await c.query(normSql, normParams as any[]);
+                    allRows.push(...(res.rows ?? []));
+                }
+                const rows = rowsAdapter("postgres", allRows);
+                return {rows, rowCount: rows.length};
+            }
+
+            // Non-SELECT → batch mutations
             let total = 0;
             const insertIds: number[] = [];
             for (const p of paramSets) {
-                const { params: normParams } = queryAdapter("postgres", sql, p);
+                const {params: normParams} = queryAdapter("postgres", sql, p);
                 const res = await c.query(normSql, normParams as any[]);
                 const rows = rowsAdapter("postgres", res.rows ?? []);
                 total += res.rowCount ?? 0;
@@ -114,15 +128,30 @@ export class PostgresEngine extends BaseEngine {
                     insertIds.push(Number(rows[0].id));
                 }
             }
-            return { rowCount: total, insertIds, lastID: insertIds[insertIds.length - 1] };
+
+            return {
+                rows: [],
+                rowCount: total,
+                insertIds,
+                lastID: insertIds[insertIds.length - 1],
+            };
         } finally {
             c.release();
         }
     }
 
-    protected async _begin(): Promise<void>    { await this._execute('BEGIN'); }
-    protected async _commit(): Promise<void>   { await this._execute('COMMIT'); }
-    protected async _rollback(): Promise<void> { await this._execute('ROLLBACK'); }
+
+    protected async _begin(): Promise<void> {
+        await this._execute('BEGIN');
+    }
+
+    protected async _commit(): Promise<void> {
+        await this._execute('COMMIT');
+    }
+
+    protected async _rollback(): Promise<void> {
+        await this._execute('ROLLBACK');
+    }
 
     protected async _test_connection(): Promise<boolean> {
         const row = await this._fetchone<{ ok: number }>('SELECT 1 AS ok');
