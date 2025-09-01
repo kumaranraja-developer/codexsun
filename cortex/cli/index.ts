@@ -65,7 +65,7 @@ export async function runCli(args?: string[]) {
 
     const [cmd, sub, ...rest] = argv;
 
-    if (cmd === "migration") {
+    if (cmd === "migrate") {
         const allowed: Action[] = ["up", "down", "refresh", "fresh"];
         if (!sub || !allowed.includes(sub as Action)) {
             showMigrationRunnerUsage();

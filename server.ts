@@ -62,4 +62,31 @@ async function startServer() {
     }
 }
 
-startServer();
+async function startCli() {
+    const { runCli } = await import("./cortex/cli/index");
+
+    console.log("💻 CLI is ready. Type commands below:");
+    process.stdin.setEncoding("utf8");
+
+    process.stdin.on("data", async (chunk: string) => {
+        const input = chunk.trim();
+        if (!input) return;
+
+        const args = input.split(/\s+/);
+        try {
+            await runCli(args);
+        } catch (err) {
+            console.error("CLI error:", err);
+        }
+    });
+}
+
+(async () => {
+    try {
+        await startServer();  // start Fastify API server
+        await startCli();     // run CLI in parallel
+    } catch (err: any) {
+        console.error("Fatal startup error", err);
+        process.exit(1);
+    }
+})();
