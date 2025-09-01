@@ -1,7 +1,8 @@
+// cortex/database/engines/mariadb_engine.ts
 import { BaseEngine } from '../Engine';
 import type { NetworkDBConfig } from '../types';
 import mariadb, { Pool, PoolConnection } from 'mariadb';
-import { queryAdapter } from '../queryAdapter'; // shared logic
+import { queryAdapter, rowsAdapter } from '../queryAdapter'; // shared helpers
 
 export class MariaDBEngine extends BaseEngine {
     private cfg: NetworkDBConfig;
@@ -46,9 +47,7 @@ export class MariaDBEngine extends BaseEngine {
         const conn = await this._get_connection();
         try {
             const res: any = await conn.query(normSql, normParams as any);
-
-            // Normalize: mariadb returns insertId + affectedRows
-            const rows = Array.isArray(res) ? res : [];
+            const rows = rowsAdapter("mariadb", Array.isArray(res) ? res : []);
             const insertId = res?.insertId !== undefined ? Number(res.insertId) : undefined;
 
             return {
@@ -56,7 +55,7 @@ export class MariaDBEngine extends BaseEngine {
                 rowCount: rows.length,
                 affectedRows: res?.affectedRows ?? 0,
                 insertId,
-                lastID: insertId, // alias for consistency
+                lastID: insertId,
             };
         } finally {
             conn.release();
@@ -93,15 +92,9 @@ export class MariaDBEngine extends BaseEngine {
         }
     }
 
-    protected async _begin(): Promise<void> {
-        await this._execute("BEGIN");
-    }
-    protected async _commit(): Promise<void> {
-        await this._execute("COMMIT");
-    }
-    protected async _rollback(): Promise<void> {
-        await this._execute("ROLLBACK");
-    }
+    protected async _begin(): Promise<void>    { await this._execute("BEGIN"); }
+    protected async _commit(): Promise<void>   { await this._execute("COMMIT"); }
+    protected async _rollback(): Promise<void> { await this._execute("ROLLBACK"); }
 
     protected async _test_connection(): Promise<boolean> {
         const row = await this._fetchone<{ ok: number }>("SELECT 1 AS ok");

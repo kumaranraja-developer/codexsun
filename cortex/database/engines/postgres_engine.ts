@@ -1,7 +1,8 @@
+// cortex/database/engines/postgres_engine.ts
 import { BaseEngine } from '../Engine';
 import type { NetworkDBConfig } from '../types';
 import { Pool, PoolClient } from 'pg';
-import { queryAdapter } from '../queryAdapter'; // shared helper
+import { queryAdapter, rowsAdapter } from '../queryAdapter'; // shared helpers
 
 export class PostgresEngine extends BaseEngine {
     private cfg: NetworkDBConfig;
@@ -25,7 +26,6 @@ export class PostgresEngine extends BaseEngine {
             idleTimeoutMillis: this.cfg.pool?.idleMillis ?? 10000,
             connectionTimeoutMillis: this.cfg.pool?.acquireTimeoutMillis ?? 15000,
         });
-        // warm ping
         const c = await this.pool.connect();
         await c.query('SELECT 1');
         c.release();
@@ -45,36 +45,29 @@ export class PostgresEngine extends BaseEngine {
     protected async _execute(sql: string, params?: unknown): Promise<any> {
         let { sql: normSql, params: normParams } = queryAdapter("postgres", sql, params);
 
-        // ✅ Ensure INSERT always returns an id
         if (/^\s*insert/i.test(normSql) && !/returning\s+/i.test(normSql)) {
             normSql = normSql.trim().replace(/;?$/, " RETURNING id;");
         }
 
-        console.log("[DB:_execute] acquiring client...");
         const c = await this._get_connection();
-        console.log("[DB:_execute] client acquired, running SQL:", normSql, "params:", normParams);
         try {
             const res = await c.query(normSql, normParams as any[]);
-            console.log("[DB:_execute] query finished, rowCount:", res.rowCount);
+            const rows = rowsAdapter("postgres", res.rows ?? []);
 
             let insertId: number | undefined;
-            if (/insert/i.test(res.command) && res.rows?.length && res.rows[0].id !== undefined) {
-                insertId = Number(res.rows[0].id);
+            if (/insert/i.test(res.command) && rows?.length && rows[0].id !== undefined) {
+                insertId = Number(rows[0].id);
             }
 
             return {
-                rows: res.rows ?? [],
+                rows,
                 rowCount: res.rowCount ?? 0,
                 command: res.command,
                 insertId,
-                lastID: insertId, // alias
+                lastID: insertId,
             };
-        } catch (err) {
-            console.error("[DB:_execute] query error:", err);
-            throw err;
         } finally {
             c.release();
-            console.log("[DB:_execute] client released");
         }
     }
 
@@ -83,7 +76,8 @@ export class PostgresEngine extends BaseEngine {
         const c = await this._get_connection();
         try {
             const res = await c.query(normSql, normParams as any[]);
-            return (res.rows?.[0] ?? null) as T | null;
+            const rows = rowsAdapter("postgres", res.rows ?? []);
+            return (rows[0] ?? null) as T | null;
         } finally {
             c.release();
         }
@@ -94,7 +88,7 @@ export class PostgresEngine extends BaseEngine {
         const c = await this._get_connection();
         try {
             const res = await c.query(normSql, normParams as any[]);
-            return (res.rows ?? []) as T[];
+            return rowsAdapter("postgres", res.rows ?? []) as T[];
         } finally {
             c.release();
         }
@@ -103,7 +97,6 @@ export class PostgresEngine extends BaseEngine {
     protected async _executemany(sql: string, paramSets: unknown[]): Promise<any> {
         let { sql: normSql } = queryAdapter("postgres", sql);
 
-        // ✅ Ensure INSERTs also return IDs
         if (/^\s*insert/i.test(normSql) && !/returning\s+/i.test(normSql)) {
             normSql = normSql.trim().replace(/;?$/, " RETURNING id;");
         }
@@ -115,9 +108,10 @@ export class PostgresEngine extends BaseEngine {
             for (const p of paramSets) {
                 const { params: normParams } = queryAdapter("postgres", sql, p);
                 const res = await c.query(normSql, normParams as any[]);
+                const rows = rowsAdapter("postgres", res.rows ?? []);
                 total += res.rowCount ?? 0;
-                if (/insert/i.test(res.command) && res.rows?.length && res.rows[0].id !== undefined) {
-                    insertIds.push(Number(res.rows[0].id));
+                if (/insert/i.test(res.command) && rows?.length && rows[0].id !== undefined) {
+                    insertIds.push(Number(rows[0].id));
                 }
             }
             return { rowCount: total, insertIds, lastID: insertIds[insertIds.length - 1] };

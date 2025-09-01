@@ -58,6 +58,12 @@ export async function getConnection(profile: Profile = 'default'): Promise<unkno
     return eng.getConnection();
 }
 
+/** Get the driver name ("postgres" | "mariadb" | "sqlite") for a profile. */
+export async function getDriver(profile: Profile = "default"): Promise<DBDriver> {
+    const eng = await prepareEngine(profile);
+    return eng.driver; // each Engine (sqlite_engine, postgres_engine, mariadb_engine) has driver
+}
+
 export async function closeEngine(profile: Profile = 'default'): Promise<void> {
     const eng = enginesByProfile.get(profile);
     if (eng) {

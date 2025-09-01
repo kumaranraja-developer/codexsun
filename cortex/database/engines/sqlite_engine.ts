@@ -1,7 +1,8 @@
+// cortex/database/engines/sqlite_engine.ts
 import Database from 'better-sqlite3';
 import type { SQLiteDBConfig } from '../types';
 import type { Engine } from '../Engine';
-import { queryAdapter } from '../queryAdapter'; // shared helper
+import { queryAdapter, rowsAdapter } from '../queryAdapter'; // shared helpers
 
 function analyzePlaceholders(sql: string) {
     const qCount = (sql.match(/\?/g) || []).length;
@@ -83,7 +84,9 @@ export class SQLiteEngine implements Engine {
                     : call.kind === 'object' ? stmt.get(call.value)
                         : call.kind === 'scalar' ? stmt.get(call.value)
                             : stmt.get(...call.values);
-            return (row ?? null) as T | null;
+
+            const rows = rowsAdapter("sqlite", (row ? [row] : []) as Record<string, any>[]);
+            return (rows[0] ?? null) as T | null;
         } catch (err: any) {
             const preview = normParams && typeof normParams === 'object' ? JSON.stringify(normParams) : String(normParams);
             throw new RangeError(`sqlite fetchOne failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`);
@@ -101,7 +104,8 @@ export class SQLiteEngine implements Engine {
                     : call.kind === 'object' ? stmt.all(call.value)
                         : call.kind === 'scalar' ? stmt.all(call.value)
                             : stmt.all(...call.values);
-            return (rows ?? []) as T[];
+
+            return rowsAdapter("sqlite", (rows ?? []) as Record<string, any>[]) as T[];
         } catch (err: any) {
             const preview = normParams && typeof normParams === 'object' ? JSON.stringify(normParams) : String(normParams);
             throw new RangeError(`sqlite fetchAll failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`);
@@ -112,8 +116,23 @@ export class SQLiteEngine implements Engine {
         const { sql: normSql, params: normParams } = queryAdapter("sqlite", sql, params);
         const db = await this._getDb();
         const stmt = db.prepare(normSql);
+
         try {
             const call = normalizeForBetterSqlite(normSql, normParams);
+
+            // 🔑 Detect SELECT queries
+            if (/^\s*select/i.test(normSql)) {
+                const rows =
+                    call.kind === 'none'   ? stmt.all()
+                        : call.kind === 'object' ? stmt.all(call.value)
+                            : call.kind === 'scalar' ? stmt.all(call.value)
+                                : stmt.all(...call.values);
+
+                const adapted = rowsAdapter("sqlite", (rows ?? []) as Record<string, any>[]);
+                return { rows: adapted, rowCount: adapted.length };
+            }
+
+            // Non-SELECT → run()
             const info =
                 call.kind === 'none'   ? stmt.run()
                     : call.kind === 'object' ? stmt.run(call.value)
@@ -128,8 +147,12 @@ export class SQLiteEngine implements Engine {
                 insertId: info?.lastInsertRowid !== undefined ? Number(info.lastInsertRowid) : undefined, // alias
             };
         } catch (err: any) {
-            const preview = normParams && typeof normParams === 'object' ? JSON.stringify(normParams) : String(normParams);
-            throw new RangeError(`sqlite execute failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`);
+            const preview = normParams && typeof normParams === 'object'
+                ? JSON.stringify(normParams)
+                : String(normParams);
+            throw new RangeError(
+                `sqlite execute failed: ${err?.message || err}\nsql: ${normSql}\nparams: ${preview}`
+            );
         }
     }
 
@@ -137,6 +160,25 @@ export class SQLiteEngine implements Engine {
         const { sql: normSql } = queryAdapter("sqlite", sql);
         const db = await this._getDb();
         const stmt = db.prepare(normSql);
+
+        // 🔑 Detect SELECT queries
+        if (/^\s*select/i.test(normSql)) {
+            const allRows: any[] = [];
+            for (const raw of paramSets) {
+                const { params: normParams } = queryAdapter("sqlite", sql, raw);
+                const call = normalizeForBetterSqlite(normSql, normParams);
+                const rows =
+                    call.kind === 'none'   ? stmt.all()
+                        : call.kind === 'object' ? stmt.all(call.value)
+                            : call.kind === 'scalar' ? stmt.all(call.value)
+                                : stmt.all(...call.values);
+                allRows.push(...rows);
+            }
+            const adapted = rowsAdapter("sqlite", allRows as Record<string, any>[]);
+            return { rows: adapted, rowCount: adapted.length };
+        }
+
+        // Non-SELECT → batch run() inside a transaction
         let total = 0;
         let lastID: number | undefined = undefined;
 
@@ -162,8 +204,11 @@ export class SQLiteEngine implements Engine {
             const sample = paramSets.length
                 ? (typeof paramSets[0] === 'object' ? JSON.stringify(paramSets[0]) : String(paramSets[0]))
                 : '[]';
-            throw new RangeError(`sqlite executeMany failed: ${err?.message || err}\nsql: ${normSql}\nfirst param: ${sample}`);
+            throw new RangeError(
+                `sqlite executeMany failed: ${err?.message || err}\nsql: ${normSql}\nfirst param: ${sample}`
+            );
         }
+
         return {
             rows: [],
             rowCount: total,
@@ -172,6 +217,8 @@ export class SQLiteEngine implements Engine {
             insertId: lastID, // alias
         };
     }
+
+
 
     async begin(): Promise<void>    { const db = await this._getDb(); db.prepare('BEGIN').run(); }
     async commit(): Promise<void>   { const db = await this._getDb(); db.prepare('COMMIT').run(); }

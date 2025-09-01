@@ -2,65 +2,85 @@
 type Driver = "postgres" | "mariadb" | "sqlite";
 
 /** Convert ? placeholders to $1, $2... for Postgres */
-function toPgPlaceholders(sql: string): string {
+export function toPgPlaceholders(sql: string): string {
     let i = 0;
     return sql.replace(/\?/g, () => `$${++i}`);
 }
 
 /** Convert $n placeholders back to ? (for MariaDB/SQLite safety) */
-function toQMarkPlaceholders(sql: string): string {
+export function toQMarkPlaceholders(sql: string): string {
     if (/\$\d+/.test(sql)) {
         return sql.replace(/\$\d+/g, "?");
     }
     return sql;
 }
 
-/** Format values per driver (dates, nulls, JSON, etc.) */
-function formatValue(driver: Driver, v: any): any {
-    if (v === undefined || v === null) return null;
+/** Format values per driver (dates, nulls, JSON, bools, buffers, arrays, etc.) */
+export function formatValue(driver: Driver, v: any): any {
+    // undefined / null / string "null"
+    if (v === undefined || v === null || v === "null") return null;
+
+    // Boolean handling
+    if (typeof v === "boolean") {
+        if (driver === "postgres") return v;   // native boolean
+        return v ? 1 : 0;                      // mariadb + sqlite expect int
+    }
 
     // Dates
     if (v instanceof Date) {
         if (driver === "mariadb") {
-            // MariaDB expects "YYYY-MM-DD HH:MM:SS.sss"
-            return v.toISOString().replace("T", " ").replace("Z", "");
+            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
+            return v.toISOString()
+                .replace("T", " ")
+                .replace("Z", "")
+                .replace(/\.\d+$/, ""); // strip .000
         }
         return v.toISOString(); // Postgres + SQLite accept ISO
     }
 
-    // Objects/arrays → JSON for MariaDB + SQLite
-    if (typeof v === "object") {
-        if (driver === "mariadb" || driver === "sqlite") {
-            try {
-                return JSON.stringify(v);
-            } catch {
-                return String(v);
-            }
+    // Buffers / binary
+    if (Buffer.isBuffer(v)) return v;
+    if (v instanceof Uint8Array) return Buffer.from(v);
+
+    // Arrays
+    if (Array.isArray(v)) {
+        if (driver === "postgres") return v; // native arrays
+        try {
+            return JSON.stringify(v);
+        } catch {
+            return String(v);
         }
-        return v; // Postgres: let driver handle JSON
     }
 
-    // Strings for MariaDB date fix
+    // Objects
+    if (typeof v === "object") {
+        if (driver === "postgres") return v; // pg can handle JSON directly
+        try {
+            return JSON.stringify(v);
+        } catch {
+            return String(v);
+        }
+    }
+
+    // Strings → MariaDB datetime fix
     if (typeof v === "string" && driver === "mariadb" && /\d{4}-\d{2}-\d{2}T/.test(v)) {
-        return v.replace("T", " ").replace("Z", "");
+        return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
     }
 
+    // Fallback: numbers & primitives
     return v;
 }
 
 /** Normalize params: always return an array */
-function normalizeParams(driver: Driver, params?: unknown): unknown[] {
+export function normalizeParams(driver: Driver, params?: unknown): unknown[] {
     if (params === undefined) return [];
     if (params === null) return [null];
 
     if (Array.isArray(params)) {
-        return params.map((p) => {
-            if (p === undefined || p === null || p === "null") return null;
-            return formatValue(driver, p);
-        });
+        return params.map((p) => formatValue(driver, p));
     }
 
-    return [params === undefined || params === null || params === "null" ? null : formatValue(driver, params)];
+    return [formatValue(driver, params)];
 }
 
 /** Adapt SQL + params to the target driver */
@@ -80,4 +100,17 @@ export function queryAdapter(
 
     const outParams = normalizeParams(driver, params);
     return { sql: outSql, params: outParams };
+}
+
+/** ✅ Normalize rows across drivers (always array of plain objects) */
+export function rowsAdapter(driver: Driver, rows: any): any[] {
+    if (!rows) return [];
+    if (Array.isArray(rows)) return rows;
+
+    // MariaDB sometimes returns objects with metadata
+    if (typeof rows === "object" && rows.constructor === Object) {
+        return Object.values(rows).filter((v) => typeof v === "object");
+    }
+
+    return [];
 }

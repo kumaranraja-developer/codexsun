@@ -1,4 +1,5 @@
-import { execute } from "../../../../cortex/database/connection_manager";
+import { execute, getDriver } from "../../../../cortex/database/connection_manager";
+import { toPgPlaceholders, toQMarkPlaceholders } from "../../../../cortex/database/queryAdapter";
 
 export type TenantRow = {
     id: number;
@@ -62,18 +63,25 @@ function mapRow(r: any): TenantRow {
 export class TenantRepo {
     static table = "tenants";
 
+    /** Adapt placeholders based on driver */
+    private static async adapt(sql: string): Promise<string> {
+        const driver = await getDriver("default");
+        if (driver === "postgres") return toPgPlaceholders(sql);
+        return toQMarkPlaceholders(sql);
+    }
+
     static async all(limit = 50, offset = 0): Promise<TenantRow[]> {
-        const sql = `SELECT * FROM ${this.table}
-                     WHERE deleted_at IS NULL
-                     ORDER BY id DESC
-                         LIMIT ? OFFSET ?`;
+        const sql = await this.adapt(`SELECT * FROM ${this.table}
+                                      WHERE deleted_at IS NULL
+                                      ORDER BY id DESC
+                                          LIMIT ? OFFSET ?`);
         const res = await execute("default", sql, [limit, offset]);
         const rows = res.rows ?? [];
         return rows.map(mapRow);
     }
 
     static async count(): Promise<number> {
-        const sql = `SELECT COUNT(*) AS c FROM ${this.table} WHERE deleted_at IS NULL`;
+        const sql = await this.adapt(`SELECT COUNT(*) AS c FROM ${this.table} WHERE deleted_at IS NULL`);
         const res = await execute("default", sql);
         const row = res.rows?.[0] ?? {};
         const v = row.c ?? row.count ?? Object.values(row)[0];
@@ -81,14 +89,16 @@ export class TenantRepo {
     }
 
     static async findById(id: number): Promise<TenantRow | null> {
-        const sql = `SELECT * FROM ${this.table} WHERE id = ? AND deleted_at IS NULL`;
+        const sql = await this.adapt(`SELECT * FROM ${this.table} WHERE id = ? AND deleted_at IS NULL`);
+        console.log("[TenantRepo.findById] sql:", sql, "params:", [id]);
         const res = await execute("default", sql, [id]);
+        console.log("[TenantRepo.findById] raw result:", res);
         const row = res.rows?.[0];
         return row ? mapRow(row) : null;
     }
 
     static async findBySlug(slug: string): Promise<TenantRow | null> {
-        const sql = `SELECT * FROM ${this.table} WHERE slug = ? AND deleted_at IS NULL`;
+        const sql = await this.adapt(`SELECT * FROM ${this.table} WHERE slug = ? AND deleted_at IS NULL`);
         const res = await execute("default", sql, [slug]);
         const row = res.rows?.[0];
         return row ? mapRow(row) : null;
@@ -113,10 +123,10 @@ export class TenantRepo {
 
         params.push(limit, offset);
 
-        const sql = `SELECT * FROM ${this.table}
-                     WHERE ${where.join(" AND ")}
-                     ORDER BY id DESC
-                         LIMIT ? OFFSET ?`;
+        const sql = await this.adapt(`SELECT * FROM ${this.table}
+                                      WHERE ${where.join(" AND ")}
+                                      ORDER BY id DESC
+                                          LIMIT ? OFFSET ?`);
 
         const res = await execute("default", sql, params);
         const rows = res.rows ?? [];
@@ -126,9 +136,9 @@ export class TenantRepo {
     static async create(data: TenantCreateInput): Promise<TenantRow> {
         const now = new Date().toISOString();
 
-        const sql = `INSERT INTO ${this.table}
-                         (slug, name, email, meta, is_active, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        const sql = await this.adapt(`INSERT INTO ${this.table}
+                                          (slug, name, email, meta, is_active, created_at, updated_at)
+                                      VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
         const params = [
             data.slug,
@@ -193,9 +203,9 @@ export class TenantRepo {
         vals.push(new Date().toISOString());
         vals.push(id);
 
-        const sql = `UPDATE ${this.table}
-                     SET ${sets.join(", ")}
-                     WHERE id = ? AND deleted_at IS NULL`;
+        const sql = await this.adapt(`UPDATE ${this.table}
+                                      SET ${sets.join(", ")}
+                                      WHERE id = ? AND deleted_at IS NULL`);
 
         await execute("default", sql, vals);
         return this.findById(id);
@@ -203,9 +213,9 @@ export class TenantRepo {
 
     static async softDelete(id: number): Promise<boolean> {
         const now = new Date().toISOString();
-        const sql = `UPDATE tenants
-                     SET deleted_at = ?
-                     WHERE id = ? AND deleted_at IS NULL`;
+        const sql = await this.adapt(`UPDATE tenants
+                                      SET deleted_at = ?
+                                      WHERE id = ? AND deleted_at IS NULL`);
 
         const res = await execute("default", sql, [now, id]);
         const changes = res?.rowCount ?? res?.affectedRows ?? res?.changes ?? 0;
