@@ -11,7 +11,13 @@ Minimal monorepo with a single starter app: **cxsun**.
 From the repo root:
 ```bash
 pnpm install
-````
+```
+
+# copy .env.example to .env and update values as needed.
+```
+cp .env.example .env
+```
+
 
 # To run Migrate
 
@@ -20,10 +26,11 @@ From the repo root:
 
 >DB_DRIVER=postgresql | mariadb | sqlite \
  DB_HOST=localhost \
- DB_PORT=5432 \
+ DB_PORT=5432 | 3606 \
  DB_USER=yourusername \
  DB_PASSWORD=yourpassword \
  DB_NAME=yourdatabase \
+
 
 Run the following command to apply migrations:
 
