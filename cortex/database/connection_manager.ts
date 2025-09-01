@@ -9,6 +9,8 @@ const enginesByProfile: Map<string, Engine> = new Map();
 import { SQLiteEngine } from './engines/sqlite_engine';
 import { PostgresEngine } from './engines/postgres_engine';
 import { MariaDBEngine } from './engines/mariadb_engine';
+import { MysqlEngine } from './engines/mysql_engine';
+import { MongodbEngine } from './engines/mongodb_engine';
 
 function buildEngine(cfg: DBConfig): Engine {
     switch (cfg.driver) {
@@ -18,6 +20,10 @@ function buildEngine(cfg: DBConfig): Engine {
             return new PostgresEngine(cfg as NetworkDBConfig);
         case 'mariadb':
             return new MariaDBEngine(cfg as NetworkDBConfig);
+        case 'mysql':
+            return new MysqlEngine(cfg as NetworkDBConfig);
+        case 'mongodb':
+            return new MongodbEngine(cfg as NetworkDBConfig);
         default: {
             const _exhaustive: never = cfg.driver;
             throw new Error(`Unsupported driver: ${_exhaustive as DBDriver}`);
@@ -58,10 +64,10 @@ export async function getConnection(profile: Profile = 'default'): Promise<unkno
     return eng.getConnection();
 }
 
-/** Get the driver name ("postgres" | "mariadb" | "sqlite") for a profile. */
+/** Get the driver name ("postgres" | "mariadb" | "sqlite" | "mysql" | "mariadb") for a profile. */
 export async function getDriver(profile: Profile = "default"): Promise<DBDriver> {
     const eng = await prepareEngine(profile);
-    return eng.driver; // each Engine (sqlite_engine, postgres_engine, mariadb_engine) has driver
+    return eng.driver;
 }
 
 export async function closeEngine(profile: Profile = 'default'): Promise<void> {

@@ -1,4 +1,4 @@
-export type DBDriver = 'mariadb' | 'postgres' | 'sqlite';
+export type DBDriver = 'mariadb' | 'postgres' | 'sqlite' | 'mysql' | 'mongodb'   ;
 
 export interface DBPoolConfig {
     min?: number;
@@ -8,11 +8,11 @@ export interface DBPoolConfig {
 }
 
 export interface BaseDBConfig {
-    profile: string;        // 'default' | 'BLUE' | 'SANDBOX' | etc.
+    profile: string;
     driver: DBDriver;
     ssl?: boolean | 'require';
     pool?: DBPoolConfig;
-    cfgKey: string;         // stable cache key
+    cfgKey: string;
 }
 
 export interface NetworkDBConfig extends BaseDBConfig {
@@ -22,10 +22,11 @@ export interface NetworkDBConfig extends BaseDBConfig {
     password: string;
     database: string;
     socketPath?: string;
+    uri?: string;
 }
 
 export interface SQLiteDBConfig extends BaseDBConfig {
-    file: string;           // path to sqlite file
+    file: string;
 }
 
 export type DBConfig = NetworkDBConfig | SQLiteDBConfig;

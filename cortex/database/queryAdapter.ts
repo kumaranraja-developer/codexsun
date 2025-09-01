@@ -1,5 +1,5 @@
 // cortex/database/queryAdapter.ts
-type Driver = "postgres" | "mariadb" | "sqlite";
+type Driver = "postgres" | "mariadb" | "sqlite" | "mysql" | "mongodb";
 
 /** Convert ? placeholders to $1, $2... for Postgres */
 export function toPgPlaceholders(sql: string): string {
@@ -35,6 +35,23 @@ export function formatValue(driver: Driver, v: any): any {
                 .replace("Z", "")
                 .replace(/\.\d+$/, ""); // strip .000
         }
+
+        if (driver === "mysql") {
+            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
+            return v.toISOString()
+                .replace("T", " ")
+                .replace("Z", "")
+                .replace(/\.\d+$/, ""); // strip .000
+        }
+
+        if (driver === "mongodb") {
+            // MariaDB: "YYYY-MM-DD HH:MM:SS" (strip Z, replace T, drop ms if needed)
+            return v.toISOString()
+                .replace("T", " ")
+                .replace("Z", "")
+                .replace(/\.\d+$/, ""); // strip .000
+        }
+
         return v.toISOString(); // Postgres + SQLite accept ISO
     }
 
@@ -66,6 +83,12 @@ export function formatValue(driver: Driver, v: any): any {
     if (typeof v === "string" && driver === "mariadb" && /\d{4}-\d{2}-\d{2}T/.test(v)) {
         return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
     }
+
+    // Strings → MariaDB datetime fix
+    if (typeof v === "string" && driver === "mysql" && /\d{4}-\d{2}-\d{2}T/.test(v)) {
+        return v.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "");
+    }
+
 
     // Fallback: numbers & primitives
     return v;

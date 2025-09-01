@@ -80,6 +80,8 @@ function defaultPort(driver: DBDriver): number {
     switch (driver) {
         case 'postgres': return 5432;
         case 'mariadb':  return 3306;
+        case 'mysql':  return 3306;
+        case 'mongodb':  return 3306;
         case 'sqlite':   return 0;
     }
 }
