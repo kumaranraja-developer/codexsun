@@ -1,4 +1,4 @@
-import Contact1 from "../../../../resources/layouts/contactLayouts/Contact1";
+import Contact1 from "../../../../resources/UIBlocks/contactLayouts/Contact1";
 import { FaIndustry } from "react-icons/fa";
 import { IoBusiness } from "react-icons/io5";
 import { TbTruckDelivery } from "react-icons/tb";

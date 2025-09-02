@@ -1,30 +1,67 @@
+import { forwardRef } from "react";
 
-
-import * as React from "react"
-import * as SwitchPrimitive from "@radix-ui/react-switch"
-import { cn } from "../../global/library/utils"
-
-function SwitchComponent({
-  className,
-  ...props
-}: React.ComponentProps<typeof SwitchPrimitive.Root>) {
-  return (
-    <SwitchPrimitive.Root
-      data-slot="switch"
-      className={cn(
-        "peer relative border border-foreground data-[state=checked]:bg-checked data-[state=unchecked]:bg-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:data-[state=unchecked]:bg-input/80 inline-flex h-6 w-11 items-center rounded-full shadow-xs transition-all outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
-        className
-      )}
-      {...props}
-    >
-      <SwitchPrimitive.Thumb
-        data-slot="switch-thumb"
-        className={cn(
-          "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-white pointer-events-none block h-5 w-5 rounded-full ring-0 transition-transform translate-x-0 data-[state=checked]:translate-x-[1.25rem]"
-        )}
-      />
-    </SwitchPrimitive.Root>
-  )
+interface SwitchComponentProps {
+  id: string;
+  checked?: boolean | number;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  className?: string;
+  activeColor?: string;
+  inactiveColor?: string;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
-export { SwitchComponent }
+const SwitchComponent = forwardRef<HTMLButtonElement, SwitchComponentProps>(
+  (
+    {
+      id,
+      checked = true,
+      onChange,
+      disabled = false,
+      className = "",
+      activeColor = "bg-green-500",
+      inactiveColor = "bg-gray-400",
+      onKeyDown,
+    },
+    ref
+  ) => {
+    const isChecked = checked === true || checked === 1;
+
+    const handleToggle = () => {
+      if (!disabled) {
+        onChange?.(!isChecked); // just notify parent
+      }
+    };
+
+    return (
+      <button
+        id={id}
+        ref={ref}
+        type="button"
+        role="switch"
+        aria-checked={isChecked}
+        disabled={disabled}
+        onClick={handleToggle}
+        onKeyDown={onKeyDown}
+        className={`
+          relative inline-flex h-6 w-12 items-center rounded-full 
+          transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+          ${isChecked ? activeColor : inactiveColor}
+          ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+          ${className}
+        `}
+      >
+        <span
+          className={`
+            inline-block h-5 w-5 transform rounded-full bg-white transition-transform
+            ${isChecked ? "translate-x-6" : "translate-x-1"}
+          `}
+        />
+      </button>
+    );
+  }
+);
+
+SwitchComponent.displayName = "SwitchComponent";
+
+export default SwitchComponent;

@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { useAppContext } from "./AppContaxt";
-import LoadingSpinner from "../../resources/components/loading/LoadingSpinner";
 import LoadingScreen from "../../resources/components/loading/LoadingScreen";
 
 const SettingsContext = createContext<any>(null);

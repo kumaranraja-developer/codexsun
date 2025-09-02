@@ -29,7 +29,7 @@
 
 
 import * as React from "react"
-import { cn } from "../global/library/utils"
+import { cn } from "../global/helpers/utils"
 
 type SeparatorProps = {
   orientation?: "horizontal" | "vertical"

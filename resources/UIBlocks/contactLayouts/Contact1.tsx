@@ -1,7 +1,5 @@
-import { FaHome, FaPhoneAlt } from "react-icons/fa";
-import FloatContact from "../../UIBlocks/contact/FloatContact";
+import FloatContact from "../contact/FloatContact";
 import { IconType } from "react-icons";
-import Button from "../../components/button/Button";
 import Alert from "../../components/alert/alert";
 import { useState } from "react";
 type SocialLink = {

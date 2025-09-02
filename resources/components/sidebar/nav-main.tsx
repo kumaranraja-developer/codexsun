@@ -1,6 +1,6 @@
 
 
-import { useAppContext } from "../../../apps/global/AppContaxt"
+import { useAppContext } from "../../../resources/global/AppContaxt"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
@@ -16,6 +16,7 @@ import {
 import { Collapsible,
   CollapsibleContent,
   CollapsibleTrigger } from "../collapsible"
+import React from "react"
 
 export function NavMain({
   items,

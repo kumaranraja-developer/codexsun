@@ -1,6 +1,6 @@
 import * as React from "react";
 import {createPortal} from "react-dom";
-import {cn} from "../../global/library/utils";
+import {cn} from "../../global/helpers/utils";
 
 export interface TooltipProps {
     children: React.ReactNode;

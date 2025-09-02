@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import ImageButton from "../../resources/components/button/ImageBtn";
+import ImageButton from "../components/button/ImageBtn";
 
 type Point = { x: number; y: number };
 type Stroke = {

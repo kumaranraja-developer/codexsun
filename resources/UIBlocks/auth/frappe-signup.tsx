@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "../../../resources/components/chart/card"
 import Button from "../../../resources/components/button/Button"
 import apiClient from "../../global/api/apiClients";
-import {cn} from "../../global/library/utils";
+import {cn} from "../../global/helpers/utils";
 import PasswordInput from "../../../resources/components/input/password-input";
 import FloatingInput from "../../../resources/components/input/floating-input";
 

@@ -10,15 +10,15 @@ import CommonTable, {
   type TableRowData,
 } from "../../components/common/commontable";
 import { format } from "date-fns";
-import apiClient from "../../../resources/global/api/apiClients";
+import apiClient from "../../global/api/apiClients";
 import ImageButton from "../../components/button/ImageBtn";
 import FloatingInput from "../../components/input/floating-input";
 import DropdownRead from "../../components/input/dropdown-read";
 import Password_Input from "../../components/secondary_input/password_Input";
 import FileUpload from "../../components/input/fileInput";
 import Button from "../../components/button/Button";
-import { groupBy } from "../../global/library/groupBy";
-import Editor from "../../../resources/layouts/Editor";
+import { groupBy } from "../../global/helpers/groupBy";
+import Editor from "../Editor";
 type FieldType =
   | "textinput"
   | "textarea"

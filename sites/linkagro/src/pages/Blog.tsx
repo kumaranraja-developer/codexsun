@@ -1,5 +1,5 @@
 import { BlogPost } from "../../../../resources/global/library/blog";
-import BlogList from "../../../../resources/layouts/blog/BlogList";
+import BlogList from "../../../../resources/UIBlocks/blog/BlogList";
 
 export const LinkAgroBlogs: BlogPost[] = [
   {
