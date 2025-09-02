@@ -25,9 +25,10 @@ import {
 import { useNavigate } from "react-router-dom";
 import HelpMenu from "./help-menu";
 import { useRef, useState } from "react";
-import { useAppContext } from "../../../apps/global/AppContaxt";
-import { logoutUser } from "../../../apps/global/auth/logout";
-import { useFrappeAuth } from "../../../apps/global/auth/frappeAuthContext";
+import { useAppContext } from "../../../resources/global/AppContaxt";
+import { logoutUser } from "../../../resources/global/auth/logout";
+import { useFrappeAuth } from "../../../resources/global/auth/frappeAuthContext";
+import React from "react";
 
 export function NavUser({
   user,

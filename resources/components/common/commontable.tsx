@@ -158,7 +158,7 @@ function CommonTable({
     <div>
       {actionMenu && (
         <ActionMenu
-          className="absolute top-15 lg:top-10 border-ring/40 right-0 lg:mt-3 mr-3"
+          className="absolute top-9 lg:top-6 border-ring/40 right-0 lg:mt-3 mr-3"
           onClick={() => setActionMenuVisible(!actionMenuVisible)}
           isVisible={actionMenuVisible}
           menuItems={[

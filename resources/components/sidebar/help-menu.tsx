@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import ImageButton from "../button/ImageBtn"
+import React from "react"
 
 export default function HelpMenu({ onClose }: { onClose: () => void }) {
     const ref = useRef<HTMLDivElement>(null)

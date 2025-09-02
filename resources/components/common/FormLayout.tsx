@@ -1,3 +1,4 @@
+import React from "react";
 import ButtonDropdown from "../button/ButtonDropdown";
 import ImageButton from "../button/ImageBtn";
 import CommonTable, {
@@ -14,12 +15,11 @@ import Pagination from "../../../resources/components/pagination/pagination";
 import { useEffect, useMemo, useRef, useState } from "react";
 import CommonForm, { type FieldGroup } from "./commonform";
 import { useReactToPrint } from "react-to-print";
-import Print from "../../layouts/printformat/Print";
+import Print from "../../UIBlocks/printformat/Print";
 import apiClient from "../../../resources/global/api/apiClients";
 import Button from "../../../resources/components/button/Button";
 import Tooltip from "../tooltip/tooltip";
 import TabForm from "../../UIBlocks/form/TabForm";
-import React from "react";
 type FormLayoutProps = {
   groupedFields: FieldGroup[];
   head: Column[];

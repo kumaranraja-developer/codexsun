@@ -1,5 +1,5 @@
 import { JSX, useState } from "react";
-import SafeToWords from "../../global/external/safeToWords";
+import NumberToWords from "../../global/helpers/NumberToWords";
 import PrintHeader from "../../components/print/PrintHeader";
 import PrintFooter from "../../components/print/PrintFooter";
 import PrintInvoiceTable from "../../components/print/PrintInvoiceTable";
@@ -125,7 +125,7 @@ function PrintFormat2({
   const roundedTotal = Math.round(grandTotal);
   const roundOff = +(roundedTotal - grandTotal).toFixed(2);
   const grandTotalInWords =
-    SafeToWords(roundedTotal).replace(/\b\w/g, (l: string) => l.toUpperCase()) +
+    NumberToWords(roundedTotal).replace(/\b\w/g, (l: string) => l.toUpperCase()) +
     " Rupees Only";
 
   const totals: Record<string, number> = {};

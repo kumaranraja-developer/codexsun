@@ -4,7 +4,8 @@ import { iconMap } from "../common/icon-map"
 import { NavUser } from "./nav-user"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarSeparator } from "./sidebar"
 import { NavMain } from "./nav-main"
-import { useAppSettings } from "../../../apps/global/useSettings"
+import { useAppSettings } from "../../../resources/global/useSettings"
+import React from "react"
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const settings = useAppSettings()

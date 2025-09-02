@@ -1,4 +1,4 @@
-import { cn } from "../../global/library/utils";
+import { cn } from "../../global/helpers/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PaginationProps {

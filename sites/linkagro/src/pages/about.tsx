@@ -1,7 +1,7 @@
 import { lazy } from "react";
 import { useInView } from "react-intersection-observer";
 import Card2 from "../../../../resources/components/card/Card2";
-const Team = lazy(() => import("../../../../resources/layouts/portfolio/team"));
+const Team = lazy(() => import("../../../../resources/UIBlocks/portfolio/team"));
 function About() {
   const [ref1, inView1] = useInView({ triggerOnce: true, threshold: 0.1 });
   const [ref4, inView4] = useInView({ triggerOnce: true, threshold: 0.1 });

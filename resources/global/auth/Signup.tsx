@@ -1,4 +1,4 @@
-import { SignupComponent } from "../../../resources/layouts/auth/signup-component";
+import { SignupComponent } from "../../../resources/UIBlocks/auth/signup-component";
 
 export default function SignUp() {
   return (

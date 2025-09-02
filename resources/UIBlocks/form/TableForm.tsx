@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import FormLayout from "../../../resources/components/common/FormLayout";
-import type { ApiList, FieldGroup } from "../../../resources/components/common/commonform";
-import type { Column } from "../../../resources/components/common/commontable";
-import { getNestedValue } from "../../../resources/global/library/utils";
-import { parseInvoiceConfig, ParsedConfig } from "../../../resources/global/library/parseInvoiceConfig";
+import FormLayout from "../../components/common/FormLayout";
+import type { ApiList, FieldGroup } from "../../components/common/commonform";
+import type { Column } from "../../components/common/commontable";
+import { getNestedValue } from "../../global/helpers/utils";
+import { parseInvoiceConfig, ParsedConfig } from "../../global/helpers/parseInvoiceConfig";
 import React from "react";
 
 interface TableFormProps {
