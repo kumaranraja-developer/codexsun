@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 // import frappeBaseApi from "../../resources/global/api/frappeBaseApi";
 import ImageButton from "../components/button/ImageBtn";
 import apiClient from "../../resources/global/api/apiClients";
-import { useAppContext } from "../../apps/global/AppContaxt";
+import { useAppContext } from "../../resources/global/AppContaxt";
 
 export interface ProductItem {
   id: string;

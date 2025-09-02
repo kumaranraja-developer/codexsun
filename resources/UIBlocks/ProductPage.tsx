@@ -9,7 +9,7 @@ import OrderSuccess from "./OrderSuccess";
 import VerticalImageList from "./Slider/VerticalImageList";
 import Button from "../../resources/components/button/Button";
 import apiClient from "../../resources/global/api/apiClients";
-import { useAppContext } from "../../apps/global/AppContaxt";
+import { useAppContext } from "../../resources/global/AppContaxt";
 import ZoomImage from "../components/image/ZoomImage";
 import FloatContact from "./contact/FloatContact";
 import ImageButton from "../../resources/components/button/ImageBtn";

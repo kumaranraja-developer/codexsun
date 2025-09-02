@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import apiClient from "../../../resources/global/api/apiClients";
-import { useAppContext } from "../../../apps/global/AppContaxt";
+import { useAppContext } from "../../../resources/global/AppContaxt";
 
 interface PromotionSectionProps {
   api: string;

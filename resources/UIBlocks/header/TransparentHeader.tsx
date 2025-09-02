@@ -5,7 +5,7 @@ import { IoClose } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/button/Button";
 import { useInView } from "react-intersection-observer";
-import { useAppSettings } from "../../../apps/global/useSettings";
+import { useAppSettings } from "../../../resources/global/useSettings";
 
 type MenuItem = {
   label: string;

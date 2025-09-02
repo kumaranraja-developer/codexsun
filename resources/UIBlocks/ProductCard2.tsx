@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import apiClient from "../../resources/global/api/apiClients";
 import ImageButton from "../components/button/ImageBtn";
 import type { ProductItem } from "./ProductCard";
-import { useAppContext } from "../../apps/global/AppContaxt";
+import { useAppContext } from "../../resources/global/AppContaxt";
 
 // export interface ProductItem {
 //   id: string;

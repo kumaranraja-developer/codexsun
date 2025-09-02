@@ -3,7 +3,7 @@ import ImageButton from "../components/button/ImageBtn";
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../../resources/global/api/apiClients";
-import { useAppContext } from "../../apps/global/AppContaxt";
+import { useAppContext } from "../../resources/global/AppContaxt";
 
 interface SlideContent {
   id: string;

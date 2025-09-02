@@ -2,7 +2,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import apiClient from "../../resources/global/api/apiClients";
 import ImageButton from "../components/button/ImageBtn";
-import { useAppContext } from "../../apps/global/AppContaxt";
+import { useAppContext } from "../../resources/global/AppContaxt";
 
 type ProductType = {
   id: number;

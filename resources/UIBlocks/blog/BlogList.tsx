@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import GlobalSearch from "../../components/input/search-box";
-import { BlogPost } from "../../global/library/blog";
+import { BlogPost } from "../../global/helpers/blog";
 
 
 

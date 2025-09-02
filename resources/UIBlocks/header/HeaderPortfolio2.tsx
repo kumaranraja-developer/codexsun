@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IoMdMenu } from "react-icons/io";
 import { IoClose } from "react-icons/io5";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAppSettings } from "../../../apps/global/useSettings";
+import { useAppSettings } from "../../../resources/global/useSettings";
 type MenuItem = {
   label: string;
   path: string;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { getNestedValue } from "../../global/library/utils";
+import { getNestedValue } from "../../global/helpers/utils";
 
 interface SubMenuItems {
     title: string;

@@ -4,7 +4,7 @@ import { IoMdMenu } from "react-icons/io";
 import { IoClose } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import ContactHeader, { ContactItem } from "./ContactHeader";
-import { useAppSettings } from "../../../apps/global/useSettings";
+import { useAppSettings } from "../../../resources/global/useSettings";
 
 type MenuItem = {
   label: string;

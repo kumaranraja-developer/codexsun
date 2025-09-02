@@ -4,8 +4,8 @@ import { LucideShoppingCart, UserCircle2 } from "lucide-react";
 import GlobalSearch from "../../components/input/search-box";
 import ImageButton from "../../components/button/ImageBtn";
 import { ModeToggle } from "../../components/mode-toggle";
-import { useAppSettings } from "../../../apps/global/useSettings";
-import { useAuth } from "../../../apps/global/auth/AuthContext";
+import { useAppSettings } from "../../../resources/global/useSettings";
+import { useAuth } from "../../../resources/global/auth/AuthContext";
 import UserSubMenu from "../../UIBlocks/UserSubMenu";
 
 function EcartHeader() {

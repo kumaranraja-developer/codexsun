@@ -1,7 +1,7 @@
 import ImageButton from "../../../resources/components/button/ImageBtn";
 import DropdownRead from "../../../resources/components/input/dropdown-read";
 import Checkbox from "../../../resources/components/input/checkbox";
-import { FiltersType } from "../../../apps/ecart/src/pages/CategoryPage";
+import { FiltersType } from "../../../resources/ecart/src/pages/CategoryPage";
 
 type DropdownType = {
   id: string;

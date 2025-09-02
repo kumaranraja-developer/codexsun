@@ -1,6 +1,6 @@
 import React, { JSX } from "react";
 import { IconType } from "react-icons";
-import { useAppSettings } from "../../../apps/global/useSettings";
+import { useAppSettings } from "../../../resources/global/useSettings";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/button/Button";
 
