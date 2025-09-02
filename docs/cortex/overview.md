@@ -1,0 +1,47 @@
+# **Codexsun**
+
+### *Software Makes Simple*
+
+---
+
+## 🌐 About Codexsun
+
+Codexsun is an **all-in-one Business Management Software Suite** that integrates enterprise solutions into a seamless,
+scalable, and intelligent platform. Built with a **Node.js backend** and **TypeScript + React frontend**, it delivers
+both technical excellence and an exceptional user experience.
+
+---
+
+## 🏢 Core Solutions
+
+* **ERP System** – Streamline and automate business operations, finance, and supply chain.
+* **CRM** – Strengthen customer engagement, optimize sales, and nurture long-term relationships.
+* **HRMS** – Empower workforce management with modern tools for HR, payroll, and compliance.
+* **eCart Platform** – Drive growth with a scalable, secure, and customizable online commerce solution.
+
+---
+
+## 💡 Why Codexsun?
+
+✔ Unified platform for all business needs
+✔ Scalable, cloud-ready, and future-proof architecture
+✔ Enhanced collaboration across departments
+✔ Actionable insights powered by integrated analytics
+✔ Simplified workflows to accelerate decision-making
+
+---
+
+## 🚀 Our Vision
+
+To make **enterprise software simple, accessible, and powerful**—enabling organizations to grow smarter and faster in
+the digital age.
+
+---
+
+## 📞 Contact Us
+
+🌍 **Website:** [www.codexsun.com](http://www.codexsun.com)
+📧 **Email:** [info@codexsun.com](mailto:info@codexsun.com)
+📍 **Headquarters:** \[Your Company Location]
+
+---

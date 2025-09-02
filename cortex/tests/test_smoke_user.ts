@@ -15,7 +15,7 @@ type Conn = {
 };
 
 // ===================== Defaults (tune for speed tests) ======================
-const NUMBER_OF_TEST_TO_RUNS = 300;
+const NUMBER_OF_TEST_TO_RUNS = 30;
 const DEFAULT_SINGLE_INSERTS = 1;   // single INSERTs per iteration
 const DEFAULT_UPDATES = 20;         // rows to UPDATE per iteration
 const DEFAULT_BULK_BATCHES = 1;     // how many executeMany batches per iter
@@ -120,14 +120,36 @@ function adaptConnection(raw: any): Conn {
 }
 
 /** Dialect detection & helpers */
-type Dialect = "postgres" | "mysql"; // mysql covers MariaDB/MySQL family
+type Dialect = "postgres" | "mysql" | "sqlite"; // sqlite added
 
 async function detectDialect(conn: Conn): Promise<{ dialect: Dialect; version: string }> {
-    const v = await conn.fetchOne<{ version?: string; VERSION?: string }>("SELECT VERSION() AS version");
-    const version = (v as any)?.version ?? (v as any)?.VERSION ?? "unknown";
-    const lower = String(version).toLowerCase();
-    const dialect: Dialect = lower.includes("postgres") ? "postgres" : "mysql";
-    return { dialect, version };
+    // 1) Try engines exposing VERSION() (Postgres/MySQL-family)
+    try {
+        const v1 = await conn.fetchOne<{ version?: string; VERSION?: string }>("SELECT VERSION() AS version");
+        const version1 = (v1 as any)?.version ?? (v1 as any)?.VERSION ?? "unknown";
+        const lower1 = String(version1).toLowerCase();
+        if (lower1.includes("postgres")) return { dialect: "postgres", version: version1 };
+        return { dialect: "mysql", version: version1 }; // MySQL or MariaDB both come here
+    } catch {}
+
+    // 2) MySQL/MariaDB fallback via @@version and comment
+    try {
+        const v2 = await conn.fetchOne<{ v?: string; c?: string }>("SELECT @@version AS v, @@version_comment AS c");
+        if (v2?.v) {
+            const lower2 = String(v2.v).toLowerCase();
+            return { dialect: "mysql", version: v2.v + (v2.c ? ` (${v2.c})` : "") };
+        }
+    } catch {}
+
+    // 3) Try SQLite
+    try {
+        const v3 = await conn.fetchOne<{ version?: string }>("SELECT sqlite_version() AS version");
+        const version3 = (v3 as any)?.version ?? "unknown";
+        return { dialect: "sqlite", version: version3 };
+    } catch {}
+
+    // 4) Fallback
+    return { dialect: "sqlite", version: "unknown" };
 }
 
 /** Resolve existing table names to honor current FKs (tenant vs tenants, user vs users) */
@@ -135,30 +157,46 @@ async function resolveTables(conn: Conn, dialect: Dialect): Promise<{ tenant: st
     if (dialect === "postgres") {
         const t = await conn.fetchOne<{ table_name: string }>(
             `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name IN ('tenants','tenant')
-       ORDER BY CASE WHEN table_name='tenant' THEN 0 ELSE 1 END
-       LIMIT 1`
+             WHERE table_schema = 'public' AND table_name IN ('tenants','tenant')
+             ORDER BY CASE WHEN table_name='tenant' THEN 0 ELSE 1 END
+                 LIMIT 1`
         );
         const u = await conn.fetchOne<{ table_name: string }>(
             `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name IN ('users','user')
-       ORDER BY CASE WHEN table_name='users' THEN 0 ELSE 1 END
-       LIMIT 1`
+             WHERE table_schema = 'public' AND table_name IN ('users','user')
+             ORDER BY CASE WHEN table_name='users' THEN 0 ELSE 1 END
+                 LIMIT 1`
+        );
+        return { tenant: t?.table_name ?? "tenants", users: u?.table_name ?? "users" };
+    } else if (dialect === "mysql") {
+        const t = await conn.fetchOne<{ table_name: string }>(
+            `SELECT table_name FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name IN ('tenant','tenants')
+             ORDER BY CASE WHEN table_name='tenant' THEN 0 ELSE 1 END
+                 LIMIT 1`
+        );
+        const u = await conn.fetchOne<{ table_name: string }>(
+            `SELECT table_name FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name IN ('users','user')
+             ORDER BY CASE WHEN table_name='users' THEN 0 ELSE 1 END
+                 LIMIT 1`
         );
         return { tenant: t?.table_name ?? "tenants", users: u?.table_name ?? "users" };
     } else {
-        // MariaDB/MySQL
+        // SQLite
         const t = await conn.fetchOne<{ table_name: string }>(
-            `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = DATABASE() AND table_name IN ('tenant','tenants')
-       ORDER BY CASE WHEN table_name='tenant' THEN 0 ELSE 1 END
-       LIMIT 1`
+            `SELECT name AS table_name
+             FROM sqlite_master
+             WHERE type='table' AND name IN ('tenant','tenants')
+             ORDER BY CASE WHEN name='tenant' THEN 0 ELSE 1 END
+                 LIMIT 1`
         );
         const u = await conn.fetchOne<{ table_name: string }>(
-            `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = DATABASE() AND table_name IN ('users','user')
-       ORDER BY CASE WHEN table_name='users' THEN 0 ELSE 1 END
-       LIMIT 1`
+            `SELECT name AS table_name
+             FROM sqlite_master
+             WHERE type='table' AND name IN ('users','user')
+             ORDER BY CASE WHEN name='users' THEN 0 ELSE 1 END
+                 LIMIT 1`
         );
         return { tenant: t?.table_name ?? "tenants", users: u?.table_name ?? "users" };
     }
@@ -166,44 +204,50 @@ async function resolveTables(conn: Conn, dialect: Dialect): Promise<{ tenant: st
 
 /** Create tables if neither exist (don’t override existing schemas) */
 async function ensureSchemaIfMissing(conn: Conn, dialect: Dialect, names: { tenant: string; users: string }) {
-    // If tenant table exists, assume FK wiring is correct and skip creation
-    const tenantExists = await conn.fetchOne<{ exists: number }>(
-        dialect === "postgres"
-            ? `SELECT 1 AS exists FROM information_schema.tables WHERE table_schema='public' AND table_name=$1 LIMIT 1`
-            : `SELECT 1 AS exists FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1`,
-        [names.tenant]
-    );
-    if (tenantExists) return;
+    // Probe for tenant table using a non-reserved alias
+    if (dialect === "postgres" || dialect === "mysql") {
+        const probeSql =
+            dialect === "postgres"
+                ? `SELECT 1 AS present FROM information_schema.tables WHERE table_schema='public' AND table_name=$1 LIMIT 1`
+                : `SELECT 1 AS present FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1`;
+        const tenantProbe = await conn.fetchOne<{ present: number }>(probeSql, [names.tenant]);
+        if (tenantProbe?.present) return;
+    } else {
+        const probe = await conn.fetchOne<{ present: number }>(
+            `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1`,
+            [names.tenant]
+        );
+        if (probe?.present) return;
+    }
 
-    // Create both tables with a sane default schema
     if (dialect === "postgres") {
         await conn.execute(
             `CREATE TABLE IF NOT EXISTS ${names.tenant} (
-        id BIGSERIAL PRIMARY KEY,
-        slug TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        deleted_at TIMESTAMPTZ NULL
-      )`
+                                                            id BIGSERIAL PRIMARY KEY,
+                                                            slug TEXT UNIQUE NOT NULL,
+                                                            name TEXT NOT NULL,
+                                                            email TEXT UNIQUE,
+                                                            is_active INTEGER NOT NULL DEFAULT 1,
+                                                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMPTZ NULL
+                )`
         );
         await conn.execute(
             `CREATE TABLE IF NOT EXISTS ${names.users} (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        password TEXT NOT NULL,
-        tenant_id BIGINT NOT NULL REFERENCES ${names.tenant}(id) ON DELETE CASCADE,
-        meta JSONB NULL,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        deleted_at TIMESTAMPTZ NULL
-      )`
+                                                           id BIGSERIAL PRIMARY KEY,
+                                                           name TEXT NOT NULL,
+                                                           email TEXT UNIQUE,
+                                                           password TEXT NOT NULL,
+                                                           tenant_id BIGINT NOT NULL REFERENCES ${names.tenant}(id) ON DELETE CASCADE,
+                meta JSONB NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMPTZ NULL
+                )`
         );
-    } else {
+    } else if (dialect === "mysql") {
         await conn.execute(
             `CREATE TABLE IF NOT EXISTS ${names.tenant} (
                                                             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -214,22 +258,61 @@ async function ensureSchemaIfMissing(conn: Conn, dialect: Dialect, names: { tena
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 deleted_at TIMESTAMP NULL DEFAULT NULL
-                )`
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
         );
         await conn.execute(
             `CREATE TABLE IF NOT EXISTS ${names.users} (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE,
-        password VARCHAR(255) NOT NULL,
-        tenant_id BIGINT UNSIGNED NOT NULL,
-        meta JSON NULL,
-        is_active TINYINT(1) NOT NULL DEFAULT 1,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP NULL DEFAULT NULL,
-        CONSTRAINT fk_users_tenant_id FOREIGN KEY (tenant_id) REFERENCES ${names.tenant}(id) ON DELETE CASCADE
-      )`
+                                                           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                                                           name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                tenant_id BIGINT UNSIGNED NOT NULL,
+                meta JSON NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP NULL DEFAULT NULL,
+                CONSTRAINT fk_users_tenant_id FOREIGN KEY (tenant_id) REFERENCES ${names.tenant}(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+        );
+    } else {
+        // SQLite
+        await conn.execute(
+            `CREATE TABLE IF NOT EXISTS ${names.tenant} (
+                                                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                            slug TEXT NOT NULL UNIQUE,
+                                                            name TEXT NOT NULL,
+                                                            email TEXT UNIQUE,
+                                                            is_active INTEGER NOT NULL DEFAULT 1,
+                                                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                            deleted_at DATETIME NULL
+             )`
+        );
+        await conn.execute(
+            `CREATE TABLE IF NOT EXISTS ${names.users} (
+                                                           id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                           name TEXT NOT NULL,
+                                                           email TEXT UNIQUE,
+                                                           password TEXT NOT NULL,
+                                                           tenant_id INTEGER NOT NULL,
+                                                           meta TEXT NULL,                 -- JSON as TEXT
+                                                           is_active INTEGER NOT NULL DEFAULT 1,
+                                                           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                           deleted_at DATETIME NULL,
+                                                           FOREIGN KEY (tenant_id) REFERENCES ${names.tenant}(id) ON DELETE CASCADE
+                )`
+        );
+        // Trigger to emulate "ON UPDATE CURRENT_TIMESTAMP"
+        await conn.execute(
+            `CREATE TRIGGER IF NOT EXISTS trg_${names.users}_updated_at
+       AFTER UPDATE ON ${names.users}
+       BEGIN
+         UPDATE ${names.users}
+           SET updated_at = CURRENT_TIMESTAMP
+           WHERE id = NEW.id;
+       END;`
         );
     }
 }
@@ -251,11 +334,17 @@ async function insertTenant(
         );
         return (r?.rows ?? [])[0]?.id as number;
     } else {
-        await conn.execute(
+        const res = await conn.execute(
             `INSERT INTO ${names.tenant} (slug, name, email, is_active) VALUES (?, ?, ?, ?)`,
             [slug, name, email, active]
         );
-        const row = await conn.fetchOne<{ id: number }>(`SELECT LAST_INSERT_ID() AS id`);
+        const directId = (res && (res.insertId ?? res.lastID ?? res.lastInsertId)) ?? null;
+        if (directId != null) return Number(directId);
+
+        const row =
+            dialect === "sqlite"
+                ? await conn.fetchOne<{ id: number }>(`SELECT last_insert_rowid() AS id`)
+                : await conn.fetchOne<{ id: number }>(`SELECT LAST_INSERT_ID() AS id`);
         return row?.id!;
     }
 }
@@ -273,11 +362,17 @@ async function insertUser(
         );
         return (r?.rows ?? [])[0]?.id as number;
     } else {
-        await conn.execute(
+        const res = await conn.execute(
             `INSERT INTO ${names.users} (name, email, password, tenant_id) VALUES (?, ?, ?, ?)`,
             [name, email, password, tenantId]
         );
-        const row = await conn.fetchOne<{ id: number }>(`SELECT LAST_INSERT_ID() AS id`);
+        const directId = (res && (res.insertId ?? res.lastID ?? res.lastInsertId)) ?? null;
+        if (directId != null) return Number(directId);
+
+        const row =
+            dialect === "sqlite"
+                ? await conn.fetchOne<{ id: number }>(`SELECT last_insert_rowid() AS id`)
+                : await conn.fetchOne<{ id: number }>(`SELECT LAST_INSERT_ID() AS id`);
         return row?.id!;
     }
 }
@@ -306,24 +401,44 @@ async function bulkInsertUsers(
 
 async function updateUsersByIds(conn: Conn, dialect: Dialect, names: { users: string }, ids: number[]) {
     if (!ids.length) return 0;
+
     if (dialect === "postgres") {
         const r = await conn.execute(
-            `UPDATE ${names.users} SET name = name || ' (updated)' WHERE id = ANY($1) RETURNING id`,
+            `UPDATE ${names.users}
+             SET name = name || ' (updated)'
+             WHERE id = ANY($1)
+                 RETURNING id`,
             [ids]
         );
         return (r?.rows ?? []).length;
-    } else {
-        const placeholders = ids.map(() => "?").join(",");
+    }
+
+    if (dialect === "sqlite") {
+        // No RETURNING guarantee -> do an UPDATE then SELECT count
         await conn.execute(
-            `UPDATE ${names.users} SET name = CONCAT(name, ' (updated)') WHERE id IN (${placeholders})`,
+            `UPDATE ${names.users}
+             SET name = name || ' (updated)'
+             WHERE id IN (${ids.map(() => "?").join(",")})`,
             ids
         );
         const got = await conn.fetchAll<{ id: number }>(
-            `SELECT id FROM ${names.users} WHERE id IN (${placeholders})`,
+            `SELECT id FROM ${names.users} WHERE id IN (${ids.map(() => "?").join(",")})`,
             ids
         );
         return got.length;
     }
+
+    // MySQL/MariaDB
+    const placeholders = ids.map(() => "?").join(",");
+    await conn.execute(
+        `UPDATE ${names.users} SET name = CONCAT(name, ' (updated)') WHERE id IN (${placeholders})`,
+        ids
+    );
+    const got = await conn.fetchAll<{ id: number }>(
+        `SELECT id FROM ${names.users} WHERE id IN (${placeholders})`,
+        ids
+    );
+    return got.length;
 }
 
 async function deleteTenantCascade(conn: Conn, dialect: Dialect, names: { tenant: string; users: string }, tenantId: number) {

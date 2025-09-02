@@ -1,16 +1,15 @@
 import {Engine} from './Engine';
 import {getDbConfig} from './getDbConfig';
 import type {DBConfig, DBDriver, NetworkDBConfig} from './types';
-
-type Profile = 'default' | 'BLUE' | 'SANDBOX' | (string & {});
-
-const enginesByProfile: Map<string, Engine> = new Map();
-
 import {SqliteEngine} from './engines/sqlite_engine';
 import {PostgresEngine} from './engines/postgres_engine';
 import {MariaDBEngine} from './engines/mariadb_engine';
 import {MysqlEngine} from './engines/mysql_engine';
 import {MongodbEngine} from './engines/mongodb_engine';
+
+type Profile = 'default' | 'BLUE' | 'SANDBOX' | (string & {});
+
+const enginesByProfile: Map<string, Engine> = new Map();
 
 function buildEngine(cfg: DBConfig): Engine {
     switch (cfg.driver) {
@@ -60,8 +59,7 @@ export function getEngine(profile: Profile = 'default'): Engine | undefined {
 
 export async function getConnection(profile: Profile = 'default'): Promise<unknown> {
     console.log('[DB] getConnection called for', profile);
-    const eng = await prepareEngine(profile);
-    return eng.getConnection();
+    return await prepareEngine(profile);
 }
 
 /** Get the driver name ("postgres" | "mariadb" | "sqlite" | "mysql" | "mariadb") for a profile. */
