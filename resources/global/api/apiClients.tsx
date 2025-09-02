@@ -5,8 +5,8 @@ const env = (import.meta as any).env;
 
 const appType = (env.VITE_APP_TYPE || 'cxsun').toUpperCase();
 
-const apiMethod = env[`VITE_${appType}_API_METHOD`] || 'FAST_API';
-const baseURL = env[`VITE_${appType}_API_URL`] || "http://127.0.0.1:3006";
+const apiMethod = env[`VITE_${appType}_API_METHOD`] || 'TS';
+const baseURL = env[`VITE_${appType}_API_URL`];
 const frappeToken = env[`VITE_${appType}_TOKEN`];
 
 const apiClient = axios.create({

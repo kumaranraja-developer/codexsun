@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppSettings } from "../../../apps/global/useSettings";
+import { useAppSettings } from "../../../resources/global/useSettings";
 import ImageButton from "../../../resources/components/button/ImageBtn";
-import {ModeToggle} from "../../../resources/components/mode-toggle";
+import { ModeToggle } from "../../../resources/components/mode-toggle";
+import React from "react";
 
 function AppHeader() {
   const [isOpen, setIsOpen] = useState(false);
@@ -69,7 +70,7 @@ function AppHeader() {
       {/* --- Top Bar --- */}
       <div className="flex items-center justify-between gap-5">
         {/* Logo */}
-         <div
+        <div
           className={`flex items-${logo.position} gap-2 cursor-pointer`}
           onClick={() => navigate("/")}
         >

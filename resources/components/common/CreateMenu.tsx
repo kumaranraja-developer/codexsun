@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Button from "../../../resources/components/button/Button";
 import { Field } from "../common/commonform";
-import { renderField } from "../../../resources/UIBlocks/form/TabForm";
+import { renderField } from "../../UIBlocks/form/TabForm";
 
 
 type CreateMenuProps = {

@@ -41,7 +41,7 @@
                         "label": "Created",
                         "type": "textinput",
                         "inTable": true,
-                        "isForm": true,
+                        "isForm": false,
                         "isPrint": false
                     },
                     {

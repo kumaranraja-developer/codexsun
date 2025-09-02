@@ -3,7 +3,7 @@ import {
   PrintAddress,
   PrintBank,
   PrintInvoiceInfo,
-} from "../../../resources/layouts/printformat/PrintFormat2";
+} from "../../../resources/UIBlocks/printformat/PrintFormat2";
 import { formatAmount } from "./PrintInvoiceTable";
 
 interface PrintFooterProps {

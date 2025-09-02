@@ -4,7 +4,7 @@ import {
   PrintBank,
   PrintCustomerAddress,
   PrintInvoiceInfo,
-} from "../../../resources/layouts/printformat/PrintFormat2";
+} from "../../../resources/UIBlocks/printformat/PrintFormat2";
 
 interface PrintHeaderProps {
   client: {

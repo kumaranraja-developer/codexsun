@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../resources/components/chart/card";
 import Password_Input from "../../../resources/components/secondary_input/password_Input";
-import { useFrappeAuth } from "../../../apps/global/auth/frappeAuthContext";
-import { cn } from "../../global/library/utils";
+import { useFrappeAuth } from "../../../resources/global/auth/frappeAuthContext";
+import { cn } from "../../global/helpers/utils";
 import FloatingInput from "../../../resources/components/input/floating-input";
 import Button from "../../../resources/components/button/Button";
 

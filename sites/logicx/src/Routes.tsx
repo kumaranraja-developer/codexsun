@@ -5,7 +5,7 @@ import Docs from "../../../apps/ecart/src/docs";
 import LoadingScreen from "../../../resources/components/loading/LoadingScreen";
 import NotFound from "../../../resources/components/notfound/NotFound";
 const BlogLayout1 = lazy(
-  () => import("../../../resources/layouts/blog/BlogLayout1")
+  () => import("../../../resources/UIBlocks/blog/BlogLayout1")
 );
 function AppRoutes() {
   return (

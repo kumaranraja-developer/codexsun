@@ -19,8 +19,8 @@ import AppHeader from "../../../../../resources/UIBlocks/header/AppHeader";
 import { AppSidebar } from "../../../../../resources/components/sidebar/app-sidebar";
 import ScrollToTopButton from "../../../../../resources/components/common/scrolltotopbutton";
 import AppFooter from "../../../../../resources/UIBlocks/footer/AppFooter";
-import {useAuth} from '../../../../global/auth/AuthContext'
-import { useAppContext } from "../../../../global/AppContaxt";
+import {useAuth} from '../../../../../resources/global/auth/AuthContext'
+import { useAppContext } from "../../../../../resources/global/AppContaxt";
 import React from "react";
 import TenantList from "./Tenant.list";
 export default function Admin() {
@@ -90,7 +90,7 @@ export default function Admin() {
         {/* Content Area */}
         <SidebarInset className="flex flex-col flex-1 min-h-0 overflow-hidden bg-dashboard-background text-dashboard-foreground">
           {/* Subheader with Breadcrumb */}
-          <header className="flex h-16 ml-2 md:ml-0 shrink-0 items-center justify-between gap-2 mr-5 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <header className="flex mt-2 ml-2 md:ml-0 shrink-0 items-center justify-between gap-2 mr-5 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="-ml-1 **:text-foreground" />
               <Separator

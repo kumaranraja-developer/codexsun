@@ -1,9 +1,9 @@
 import FloatingInput from "../components/input/floating-input";
-import Button from "../../resources/components/button/Button";
+import Button from "../components/button/Button";
 import React, {useState, useRef, useEffect, useCallback} from "react";
 import ImageBtn from "../components/button/ImageBtn";
-import Tooltip from "../../resources/components/tooltip/tooltip";
-import apiClient from "../../resources/global/api/apiClients";
+import Tooltip from "../components/tooltip/tooltip";
+import apiClient from "../global/api/apiClients";
 
 function restoreCursorPosition(container: HTMLElement, offset: number) {
     const selection = window.getSelection();

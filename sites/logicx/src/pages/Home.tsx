@@ -2,7 +2,7 @@ import React, { lazy, useState } from "react";
 import { FaFacebookF, FaTwitter, FaInstagram } from "react-icons/fa";
 import { AiFillClockCircle } from "react-icons/ai";
 import ScrollToTopButton from "../../../../resources/components/common/scrolltotopbutton";
-const Team = lazy(() => import("../../../../resources/layouts/portfolio/team"));
+const Team = lazy(() => import("../../../../resources/UIBlocks/portfolio/team"));
 const PortfolioContact = lazy(
   () => import("../../../../resources/UIBlocks/contact/PortfolioContact")
 );

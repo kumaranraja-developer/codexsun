@@ -23,7 +23,7 @@ const HeaderPortfolio2 = lazy(
 import ScrollToTopButton from "../../../resources/components/common/scrolltotopbutton";
 
 const BlogLayout1 = lazy(
-  () => import("../../../resources/layouts/blog/BlogLayout1")
+  () => import("../../../resources/UIBlocks/blog/BlogLayout1")
 );
 
 const Blog = React.lazy(() => import("./pages/Blog"));
