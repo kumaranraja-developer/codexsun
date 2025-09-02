@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "noEmit": true,
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -9,13 +8,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
-
-    "baseUrl": ".",
-    "paths": {
-      "@codexsun/*": ["codexsun/*"],
-      // or, if you prefer to target the cortex folder directly:
-       "@cortex/*": ["cortex/*"]
-    }
+    "baseUrl": "."
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx"]
 }

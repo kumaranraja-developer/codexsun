@@ -1,70 +1,71 @@
-// apps/user.controller.ts
-import { FastifyInstance, FastifyPluginAsync } from "fastify";
-import { UserRepo, UserCreateInput, UserUpdateInput } from "./user.repo";
+// ===================================== app/user/User.controller.ts =====================================
+import type { FastifyRequest, FastifyReply } from "fastify";
+import { UserRepo } from "./user.repo";
+import {
+    validateCreate,
+    validateQuery,
+    validateUpdate,
+} from "./user.validator";
 
-const userController: FastifyPluginAsync = async (fastify: FastifyInstance) => {
+export class UserController {
+    constructor(private readonly repo: UserRepo) {}
 
-
-
-
-    fastify.get("/", async (req) => {
-        const { q, active, limit, offset } = req.query as {
-            q?: string;
-            active?: string;
-            limit?: string;
-            offset?: string;
-        };
-
-        return UserRepo.search({
-            q,
-            active: active === undefined ? undefined : active === "true",
-            limit: limit ? Number(limit) : 50,
-            offset: offset ? Number(offset) : 0,
-        });
-    });
-
-
-
-    // Count users
-    fastify.get("/count", async () => {
-        const count = await UserRepo.count();
-        return { count };
-    });
-
-    // Get user by ID
-    fastify.get("/:id", async (req, reply) => {
-        const { id } = req.params as { id: string };
-        const user = await UserRepo.findById(Number(id));
-        if (!user) return reply.code(404).send({ error: "User not found" });
-        return user;
-    });
-
-    // Create user
-    fastify.post("/", async (req, reply) => {
-        const body = req.body as UserCreateInput;
-        if (!body.slug || !body.name) {
-            return reply.code(400).send({ error: "slug and name are required" });
+    ensureSchema = async (_req: FastifyRequest, reply: FastifyReply) => {
+        try {
+            await this.repo.ensureTable();
+            return reply.code(200).send({ ok: true });
+        } catch (err) {
+            console.error("[UserController.ensureSchema] error:", err);
+            return reply.code(500).send({ error: String(err) });
         }
-        const user = await UserRepo.create(body);
-        return reply.code(201).send(user);
-    });
+    };
 
-    // Update user
-    fastify.put("/:id", async (req, reply) => {
-        const { id } = req.params as { id: string };
-        const body = req.body as UserUpdateInput;
-        const user = await UserRepo.update(Number(id), body);
+    create = async (req: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const input = validateCreate(req);
+            const user = await this.repo.create(input);
+            return reply.code(201).send(user);
+        } catch (err) {
+            console.error("[UserController.create] error:", err);
+            return reply.code(500).send({ error: String(err) });
+        }
+    };
+
+    get = async (req: FastifyRequest, reply: FastifyReply) => {
+        const id = Number((req.params as any).id);
+        const user = await this.repo.findById(id);
         if (!user) return reply.code(404).send({ error: "User not found" });
-        return user;
-    });
+        return reply.send(user);
+    };
 
-    // Soft delete user
-    fastify.delete("/:id", async (req, reply) => {
-        const { id } = req.params as { id: string };
-        const ok = await UserRepo.softDelete(Number(id));
-        if (!ok) return reply.code(404).send({ error: "User not found" });
-        return { success: true };
-    });
-};
+    list = async (req: FastifyRequest, reply: FastifyReply) => {
+        const q = validateQuery(req);
+        const limit = q.limit ?? 100;
+        const offset = q.offset ?? 0;
 
-export default userController;
+        const users = await this.repo.findAll(limit, offset);
+        return reply.send(users);
+    };
+
+    update = async (req: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const input = validateUpdate(req);
+            const user = await this.repo.update(input.id, input);
+            return reply.send(user);
+        } catch (err) {
+            console.error("[UserController.update] error:", err);
+            return reply.code(500).send({ error: String(err) });
+        }
+    };
+
+    remove = async (req: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const id = Number((req.params as any).id);
+            await this.repo.remove(id);
+            return reply.code(204).send();
+        } catch (err) {
+            console.error("[UserController.remove] error:", err);
+            return reply.code(500).send({ error: String(err) });
+        }
+    };
+}

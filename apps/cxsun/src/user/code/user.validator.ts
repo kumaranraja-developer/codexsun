@@ -1,23 +1,37 @@
-// cortex/http/validators/tenant.ts
-import { v } from "../../../../../cortex/carex/validator";
+// apps/cxsun/src/user/code/user.validator.ts
+import { z } from "zod";
+import type { FastifyRequest } from "fastify";
 
-// Create
-export const TenantCreateSchema = v.object({
-    slug: v.string().min(1).max(190),
-    name: v.string().min(1).max(190),
-    email: v.string().email().nullable().optional(),
-    meta: v.any().nullable().optional(),
-    is_active: v.boolean().optional().default(true),
-}).strict(); // no unknown keys
+// --- Schemas ---
+const CreateUserSchema = z.object({
+    name: z.string(),
+    email: z.string().email(),
+    password: z.string().min(6),
+    is_active: z.coerce.boolean().default(true),
+});
 
-export type TenantCreate = ReturnType<typeof TenantCreateSchema["parse"]>;
+const UpdateUserSchema = z.object({
+    id: z.number(),
+    name: z.string().optional(),
+    email: z.string().email().optional(),
+    password: z.string().min(6).optional(),
+    is_active: z.coerce.boolean().optional(),
+});
 
-// Update (slug immutable by default)
-export const TenantUpdateSchema = v.object({
-    name: v.string().min(1).max(190).optional(),
-    email: v.string().email().nullable().optional(),
-    meta: v.any().nullable().optional(),
-    is_active: v.boolean().optional(),
-}).strict();
+const QueryUserSchema = z.object({
+    limit: z.coerce.number().optional(),
+    offset: z.coerce.number().optional(),
+});
 
-export type TenantUpdate = ReturnType<typeof TenantUpdateSchema["parse"]>;
+// --- Validators ---
+export function validateCreate(req: FastifyRequest) {
+    return CreateUserSchema.parse(req.body);
+}
+
+export function validateUpdate(req: FastifyRequest) {
+    return UpdateUserSchema.parse(req.body);
+}
+
+export function validateQuery(req: FastifyRequest) {
+    return QueryUserSchema.parse(req.query);
+}

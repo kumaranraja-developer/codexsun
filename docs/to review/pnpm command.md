@@ -28,3 +28,6 @@ pnpm add -D pino-pretty -w
 
 pnpm add -D @fastify/cors@9 -w
 pnpm add -D tailwindcss -w
+
+
+pnpm add -D reflect-metadata -w

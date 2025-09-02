@@ -3,16 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./main.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./main.ts",
-    "./main": "./main.ts",
-    "./database/*": "./database/*",
-    "./settings/*": "./settings/*",
-    "./connection/*": "./connection/*"
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./*": {
+      "import": "./dist/*.js",
+      "require": "./dist/*.cjs",
+      "types": "./dist/*.d.ts"
+    }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsup index.ts --format esm,cjs --dts --out-dir dist --clean",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rimraf dist .turbo && rimraf --glob \"*.tsbuildinfo\""
   },
   "dependencies": {
@@ -37,6 +44,8 @@
     "@types/pg": "^8.15.5",
     "@types/sqlite3": "^5.1.0",
     "fastify-plugin": "^5.0.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "tsup": "^8.5.0",
+    "zod": "^4.1.5"
   }
 }

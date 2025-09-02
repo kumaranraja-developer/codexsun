@@ -2,10 +2,12 @@
 
 // cortex/cli/index.ts
 import "dotenv/config";
-import { showBootUsage } from "./doctor/boot-help";
-import { runMigrations } from "../migration/Runner";
-import { showMigrationRunnerUsage } from "./migration/runner-help";
-import { pathToFileURL } from "url";
+import {showBootUsage} from "./doctor/boot-help";
+import {runMigrations} from "../migration/Runner";
+import {showMigrationRunnerUsage} from "./migration/runner-help";
+import {pathToFileURL} from "url";
+import {runFixFilenames} from "./filename/fix-filenames";
+import {showFilenamesUsage} from "./filename/filenames-help";
 
 type Action = "up" | "down" | "refresh" | "fresh";
 
@@ -95,6 +97,28 @@ export async function runCli(args?: string[]) {
 
         process.exit(0);
     }
+
+
+    if (cmd === "filenames") {
+        const [sub, folder, ...rest] = argv.slice(1);
+
+        if (!sub) {
+            showFilenamesUsage();
+            process.exit(1);
+        }
+
+        if (sub === "scan" || sub === "fix") {
+            const args: string[] = [sub, ...rest];
+            if (folder) args.unshift(folder); // allow folder path
+            await runFixFilenames(args);
+            process.exit(0);
+        }
+
+        console.error(`Unknown filenames command: ${sub}`);
+        showFilenamesUsage();
+        process.exit(1);
+    }
+
 
     // unknown command
     console.error(`Unknown command: ${cmd}`);
