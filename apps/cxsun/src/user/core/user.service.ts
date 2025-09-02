@@ -1,5 +1,5 @@
-// apps/user/user.service.ts
-import { Service } from "../../../../../cortex/core/service";
+// apps/cxsun/src/user/user.service.ts
+import { Service, ModelApi, PaginatedResult } from "../../../../../cortex/core/service";
 import { User } from "./user.model";
 import { UserValidator } from "./user.validator";
 
@@ -12,26 +12,37 @@ export interface UserDTO {
     updated_at: string;
 }
 
-export interface PaginatedResult<T> {
-    status: "success" | "error";
-    data: T[];
-    meta: {
-        total: number;
-        limit: number;
-        offset: number;
-        sort?: string;
-        order?: string;
-        filters?: Record<string, any>;
-    };
+/**
+ * Tiny adapter that presents your User model as a ModelApi<UserEntity>.
+ * It delegates to whatever your model actually exposes (static or instance).
+ * If your base Model has these methods but TypeScript doesn't know, we cast to any.
+ */
+class UserModelApi implements ModelApi<any> {
+    private Model: any;   // class or repo
+    private inst: any;    // optional instance (if needed)
+
+    constructor(ModelClass: any) {
+        this.Model = ModelClass;
+        this.inst = typeof ModelClass === "function" ? new ModelClass() : ModelClass;
+    }
+
+    findAll(opts: any)     { return (this.Model.findAll ?? this.inst.findAll).call(this.Model ?? this.inst, opts); }
+    count(opts?: any)      { return (this.Model.count ?? this.inst.count).call(this.Model ?? this.inst, opts); }
+    findById(id: number)   { return (this.Model.findById ?? this.inst.findById).call(this.Model ?? this.inst, id); }
+    create(data: any)      { return (this.Model.create ?? this.inst.create).call(this.Model ?? this.inst, data); }
+    update(id: number, d: any) { return (this.Model.update ?? this.inst.update).call(this.Model ?? this.inst, id, d); }
+    remove(id: number)     { return (this.Model.remove ?? this.inst.remove).call(this.Model ?? this.inst, id); }
+    nextSequence()         { return (this.Model.nextSequence ?? this.inst.nextSequence).call(this.Model ?? this.inst); }
 }
 
-export class UserService extends Service<User, UserDTO> {
+export class UserService extends Service<UserModelApi, UserDTO> {
     constructor() {
-        super(User);
+        // Pass the adapter instance; name is just for error messages
+        super(new UserModelApi(User), "User");
     }
 
     // --- DTO Mappers ---
-    private toDTO(user: User): UserDTO {
+    protected toDTO(user: any): UserDTO {
         return {
             id: user.id,
             name: user.name,
@@ -42,71 +53,53 @@ export class UserService extends Service<User, UserDTO> {
         };
     }
 
-    private toDTOList(users: User[]): UserDTO[] {
+    protected toDTOList(users: any[]): UserDTO[] {
         return users.map((u) => this.toDTO(u));
     }
 
-    // --- Queries ---
+    // --- Validators (hook into base create/update) ---
+    protected validateCreate(data: any) {
+        return new UserValidator().validateCreate(data);
+    }
+
+    protected validateUpdate(data: any) {
+        return new UserValidator().validateUpdate(data);
+    }
+
+    // (Optional) keep your custom filter shape while preserving core types
     async findAll(query: any): Promise<PaginatedResult<UserDTO>> {
         const {
             name,
             email,
+            is_active,
             sort = "id",
             order = "asc",
             limit = 100,
             offset = 0,
-            is_active,
+            ...rest
         } = query;
 
-        const filters: Record<string, any> = {};
+        const filters: Record<string, any> = { ...rest };
         if (name) filters.name = name;
         if (email) filters.email = email;
         if (is_active !== undefined) filters.is_active = is_active;
 
-        const users = await this.model.findAll({
+        const ord: "asc" | "desc" =
+            String(order).toLowerCase() === "desc" ? "desc" : "asc";
+
+        const rows = await this.model.findAll({
             filters,
             sort,
-            order,
+            order: ord,
             limit: +limit,
             offset: +offset,
         });
-
         const total = await this.model.count({ filters });
 
         return {
             status: "success",
-            data: this.toDTOList(users),
-            meta: { total, limit: +limit, offset: +offset, sort, order, filters },
+            data: this.toDTOList(rows),
+            meta: { total, limit: +limit, offset: +offset, sort, order: ord, filters },
         };
-    }
-
-    async findByIdOrFail(id: number): Promise<UserDTO> {
-        const user = await this.findById(id);
-        if (!user) throw new Error("User not found");
-        return this.toDTO(user);
-    }
-
-    async create(data: any): Promise<UserDTO> {
-        const input = UserValidator.validateCreate(data);
-        const user = await this.model.create(input);
-        return this.toDTO(user);
-    }
-
-    async update(id: number, data: any): Promise<UserDTO> {
-        const input = UserValidator.validateUpdate(data);
-        const user = await this.model.update(id, input);
-        return this.toDTO(user);
-    }
-
-    async remove(id: number): Promise<void> {
-        await this.model.remove(id);
-    }
-
-    async count(filters: Record<string, any> = {}): Promise<number> {
-        return this.model.count({ filters });
-    }
-
-    async nextSequence(): Promise<number> {
-        return this.model.nextSequence();
     }
 }
