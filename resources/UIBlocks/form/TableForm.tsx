@@ -4,7 +4,6 @@ import type { ApiList, FieldGroup } from "../../components/common/commonform";
 import type { Column } from "../../components/common/commontable";
 import { getNestedValue } from "../../global/helpers/utils";
 import { parseInvoiceConfig, ParsedConfig } from "../../global/helpers/parseInvoiceConfig";
-import React from "react";
 
 interface TableFormProps {
   jsonPath: string | object;

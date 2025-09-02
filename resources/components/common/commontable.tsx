@@ -4,6 +4,7 @@ import ActionMenu from "./ActionMenu";
 import Warning from "../alert/Warning";
 import apiClient from "../../../resources/global/api/apiClients";
 import React from "react";
+import StatusBadge from "../alert/StatusBadge";
 
 export interface TableRowData {
   [key: string]: string | number;
@@ -331,6 +332,25 @@ function CommonTable({
                             />
                             {cellValue}
                           </label>
+                        </td>
+                      );
+                    }
+
+                    if (key === "is_active" || key === "active") {
+                      return (
+                        <td
+                          key={colIndex}
+                          className="px-4 py-2 cursor-pointer border-r border-ring/30"
+                          onClick={() => {
+                            if (filterOnColumnClick && onCellClick) {
+                              onCellClick(key, String(cellValue));
+                            }
+                          }}
+                          title={`Click to filter ${key} = "${cellValue}"`}
+                        >
+                          <StatusBadge
+                            active={cellValue === "true" || cellValue === 1}
+                          />
                         </td>
                       );
                     }

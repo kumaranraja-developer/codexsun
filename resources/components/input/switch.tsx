@@ -1,31 +1,42 @@
-import { forwardRef } from "react";
-import { SwitchComponent } from "./switch-component";
+import { forwardRef, useState, useEffect } from "react";
+import SwitchComponent from "./switch-component";
 
 interface SwitchProps {
   id: string;
-  agreed: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
+  agreed?: boolean;
+  label?: string;
+  onChange?: (checked: boolean) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
-// Forward ref to the underlying focusable element (usually the switch button)
 const Switch = forwardRef<HTMLButtonElement, SwitchProps>(
-  ({ id, agreed, label, onChange, onKeyDown }, ref) => {
+  ({ id, agreed = true, label, onChange, onKeyDown }, ref) => {
+    const [checked, setChecked] = useState<boolean>(agreed);
+
+    useEffect(() => {
+      setChecked(agreed);
+    }, [agreed]);
+
+    const handleToggle = (next: boolean) => {
+      setChecked(next);
+      onChange?.(next);
+    };
+
     return (
       <div className="flex items-center gap-3">
         <SwitchComponent
           id={id}
-          checked={agreed}
-          onCheckedChange={onChange}
-          ref={ref} // ✅ forward ref
-          onKeyDown={onKeyDown} // ✅ handle Enter key
+          checked={checked}
+          onChange={handleToggle}
+          ref={ref}
+          onKeyDown={onKeyDown}
         />
         <label
           htmlFor={id}
           className="bg-background text-foreground cursor-pointer"
+          onClick={() => handleToggle(!checked)}
         >
-          {label}
+          {label ?? (checked ? "Active" : "Inactive")}
         </label>
       </div>
     );

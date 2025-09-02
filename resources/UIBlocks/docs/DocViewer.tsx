@@ -30,6 +30,25 @@ export default function DocViewer({ slug }: DocViewerProps) {
     setCheckedItems((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
+  // const markdownComponents: Components = {
+  //   code: (({ inline, className, children, ...props }) => {
+  //     const match = /language-(\w+)/.exec(className || "");
+  //     return !inline && match ? (
+  //       <SyntaxHighlighter
+  //         style={materialLight}
+  //         language={match[1]}
+  //         PreTag="div"
+  //         {...props}
+  //       >
+  //         {String(children).replace(/\n$/, "")}
+  //       </SyntaxHighlighter>
+  //     ) : (
+  //       <code className="bg-neutral-100 rounded px-1 py-0.5 text-sm" {...props}>
+  //         {children}
+  //       </code>
+  //     );
+  //   }) as React.FC<any>,
+
   const markdownComponents: Components = {
     code: (({ inline, className, children, ...props }) => {
       const match = /language-(\w+)/.exec(className || "");
@@ -48,7 +67,6 @@ export default function DocViewer({ slug }: DocViewerProps) {
         </code>
       );
     }) as React.FC<any>,
-
     a: (({ href, children, ...props }) => (
       <a
         href={href}
@@ -69,7 +87,9 @@ export default function DocViewer({ slug }: DocViewerProps) {
 
         return (
           <li
-            className={`flex items-start ml-6 mb-2 ${isChecked ? "opacity-50 line-through text-gray-400" : ""}`}
+            className={`flex items-start ml-6 mb-2 ${
+              isChecked ? "opacity-50 line-through text-gray-400" : ""
+            }`}
             {...props}
           >
             <input

@@ -1,4 +1,3 @@
-import React from "react";
 import ButtonDropdown from "../button/ButtonDropdown";
 import ImageButton from "../button/ImageBtn";
 import CommonTable, {
